@@ -4,8 +4,10 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import { CustomerEditModal, CustomerDeleteModal } from "@/components/customers/CustomerModal";
+import {
+  CustomerEditModal,
+  CustomerDeleteModal,
+} from "@/components/customers/CustomerModal";
 import Loading from "@/components/ui/Loading";
 import Button from "@/components/ui/Button";
 import {
@@ -22,14 +24,34 @@ import type {
   Order,
   CustomerStatus,
 } from "@/types/customer.type";
-import { formatDate, formatDateTime, formatDuration, timeAgo } from "@/utils/formatDate";
+import {
+  formatDate,
+  formatDateTime,
+  formatDuration,
+  timeAgo,
+} from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
 
 // ─── Status badge ─────────────────────────────────────────────────────────────
-const statusConfig: Record<CustomerStatus, { label: string; className: string }> = {
-  active: { label: "Hoạt động", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  inactive: { label: "Ngừng HĐ", className: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
-  vip: { label: "VIP ⭐", className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+const statusConfig: Record<
+  CustomerStatus,
+  { label: string; className: string }
+> = {
+  active: {
+    label: "Hoạt động",
+    className:
+      "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  },
+  inactive: {
+    label: "Ngừng HĐ",
+    className:
+      "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
+  },
+  vip: {
+    label: "VIP ⭐",
+    className:
+      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  },
 };
 
 const genderLabel: Record<string, string> = {
@@ -64,7 +86,10 @@ export default function CustomerDetailPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Toast
-  const [toast, setToast] = useState<{ type: "success" | "error"; msg: string } | null>(null);
+  const [toast, setToast] = useState<{
+    type: "success" | "error";
+    msg: string;
+  } | null>(null);
 
   // ─── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -121,36 +146,40 @@ export default function CustomerDetailPage() {
   // ─── Render ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <DashboardLayout>
+      <div>
         <Loading text="Đang tải thông tin khách hàng..." />
-      </DashboardLayout>
+      </div>
     );
   }
 
   if (error || !customer) {
     return (
-      <DashboardLayout>
+      <div>
         <div className="flex flex-col items-center gap-4 py-20 text-center">
-          <p className="text-sm text-red-500">{error ?? "Không tìm thấy khách hàng"}</p>
+          <p className="text-sm text-red-500">
+            {error ?? "Không tìm thấy khách hàng"}
+          </p>
           <Link href="/customers">
             <Button variant="secondary">← Quay lại danh sách</Button>
           </Link>
         </div>
-      </DashboardLayout>
+      </div>
     );
   }
 
   const status = statusConfig[customer.status];
 
   return (
-    <DashboardLayout>
+    <div>
       {/* ── Breadcrumb ── */}
       <nav className="mb-4 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
         <Link href="/customers" className="hover:text-blue-600">
           Khách hàng
         </Link>
         <span>/</span>
-        <span className="text-slate-900 dark:text-slate-100 font-medium">{customer.full_name}</span>
+        <span className="text-slate-900 dark:text-slate-100 font-medium">
+          {customer.full_name}
+        </span>
       </nav>
 
       {/* ── Header ── */}
@@ -201,8 +230,18 @@ export default function CustomerDetailPage() {
             size="sm"
             onClick={() => setEditOpen(true)}
             icon={
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
             }
           >
@@ -213,8 +252,18 @@ export default function CustomerDetailPage() {
             size="sm"
             onClick={() => setDeleteOpen(true)}
             icon={
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
               </svg>
             }
           >
@@ -230,13 +279,23 @@ export default function CustomerDetailPage() {
           { label: "Đơn hàng", value: customer.total_orders.toString() },
           {
             label: "Tổng chi tiêu",
-            value: customer.total_spent > 0 ? formatCurrency(customer.total_spent) : "—",
+            value:
+              customer.total_spent > 0
+                ? formatCurrency(customer.total_spent)
+                : "—",
           },
           { label: "Ghé gần nhất", value: timeAgo(customer.last_visited_at) },
         ].map((stat) => (
-          <div key={stat.label} className="rounded-xl bg-white dark:bg-slate-800 p-4 shadow-sm dark:shadow-slate-900/50">
-            <p className="text-xs text-slate-500 dark:text-slate-400">{stat.label}</p>
-            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">{stat.value}</p>
+          <div
+            key={stat.label}
+            className="rounded-xl bg-white dark:bg-slate-800 p-4 shadow-sm dark:shadow-slate-900/50"
+          >
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {stat.label}
+            </p>
+            <p className="mt-1 text-lg font-bold text-slate-900 dark:text-slate-100">
+              {stat.value}
+            </p>
           </div>
         ))}
       </div>
@@ -269,16 +328,17 @@ export default function CustomerDetailPage() {
               }
             />
             <InfoRow label="Ngày tạo" value={formatDate(customer.created_at)} />
-            <InfoRow
-              label="Cập nhật"
-              value={formatDate(customer.updated_at)}
-            />
+            <InfoRow label="Cập nhật" value={formatDate(customer.updated_at)} />
           </dl>
 
           {customer.note && (
             <div className="mt-4 rounded-lg bg-slate-50 dark:bg-slate-700/50 p-3">
-              <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Ghi chú</p>
-              <p className="text-sm text-slate-700 dark:text-slate-300">{customer.note}</p>
+              <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                Ghi chú
+              </p>
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                {customer.note}
+              </p>
             </div>
           )}
         </div>
@@ -326,9 +386,23 @@ export default function CustomerDetailPage() {
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                            <svg className="h-4 w-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                            <svg
+                              className="h-4 w-4 text-blue-600 dark:text-blue-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                              />
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                              />
                             </svg>
                           </div>
                           <div>
@@ -347,7 +421,9 @@ export default function CustomerDetailPage() {
                           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                             {formatDuration(v.duration_seconds)}
                           </p>
-                          <p className="text-xs text-slate-400 dark:text-slate-500">thời gian ở</p>
+                          <p className="text-xs text-slate-400 dark:text-slate-500">
+                            thời gian ở
+                          </p>
                         </div>
                       </div>
                     ))}
@@ -372,8 +448,18 @@ export default function CustomerDetailPage() {
                       >
                         <div className="flex items-start gap-3">
                           <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-                            <svg className="h-4 w-4 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                            <svg
+                              className="h-4 w-4 text-green-600 dark:text-green-400"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              stroke="currentColor"
+                              strokeWidth={2}
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                              />
                             </svg>
                           </div>
                           <div>
@@ -396,7 +482,8 @@ export default function CustomerDetailPage() {
                           </p>
                           <p className="text-xs text-slate-400 dark:text-slate-500">
                             {o.payment_method
-                              ? paymentLabel[o.payment_method] ?? o.payment_method
+                              ? (paymentLabel[o.payment_method] ??
+                                o.payment_method)
                               : "—"}
                           </p>
                         </div>
@@ -430,29 +517,29 @@ export default function CustomerDetailPage() {
       {toast && (
         <div
           className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg ${
-            toast.type === "success" ? "bg-green-600 text-white" : "bg-red-600 text-white"
+            toast.type === "success"
+              ? "bg-green-600 text-white"
+              : "bg-red-600 text-white"
           }`}
           role="alert"
         >
           <span className="text-sm font-medium">{toast.msg}</span>
         </div>
       )}
-    </DashboardLayout>
+    </div>
   );
 }
 
 // ─── Helper component ─────────────────────────────────────────────────────────
-function InfoRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
+function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-4">
-      <dt className="shrink-0 text-xs text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="text-right text-sm text-slate-800 dark:text-slate-200">{value}</dd>
+      <dt className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+        {label}
+      </dt>
+      <dd className="text-right text-sm text-slate-800 dark:text-slate-200">
+        {value}
+      </dd>
     </div>
   );
 }
