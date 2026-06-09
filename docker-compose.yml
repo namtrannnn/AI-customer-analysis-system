@@ -1,0 +1,22 @@
+services:
+  ai-customer-api:
+    build:
+      context: ./backend
+    container_name: ai-customer-api
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    restart: always
+
+  ai-customer-web:
+    build:
+      context: ./frontend
+    container_name: ai-customer-web
+    env_file:
+      - ./frontend/.env
+    ports:
+      - "3000:3000"
+    depends_on:
+      - ai-customer-api
+    restart: always
