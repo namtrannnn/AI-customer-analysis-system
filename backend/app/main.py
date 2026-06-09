@@ -1,5 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Depends
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from app.database.session import get_db
+from app.utils.response import error_response, success_response
+from app.routers import customer_router 
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -19,9 +28,44 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(customer_router.router)
+
+# Xử lý các lỗi do bạn chủ động ném ra (raise HTTPException)
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response(
+            message=str(exc.detail),
+            error_code=f"HTTP_{exc.status_code}"
+        )
+    )
+
+# Xử lý các lỗi do Pydantic chặn lại (truyền thiếu full_name, sai sđt)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content=error_response(
+            message="Dữ liệu đầu vào không hợp lệ",
+            error_code="VALIDATION_ERROR",
+            details=exc.errors() 
+        )
+    )
+
+
 @app.get("/")
 def root():
-    return {
-        "success": True,
-        "message": "AI Customer Analysis API is running"
+    return success_response(data=None, message="AI Customer Analysis API is running")
+
+
+@app.get("/db-test")
+def db_test(db: Session = Depends(get_db)):
+    result = db.execute(text("SELECT COUNT(*) FROM customers"))
+    count = result.scalar_one()
+    
+    data = {
+        "database": "supabase",
+        "customers_count": count,
     }
+    return success_response(data=data, message="Kết nối Database thành công")
