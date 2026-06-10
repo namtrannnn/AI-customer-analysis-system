@@ -143,6 +143,10 @@ def get_list_customers(db: Session, skip: int = 0, limit: int = 100) -> list[Cus
              .limit(limit)\
              .all()
 
+# Hàm đếm tổng số lượng khách hàng để làm phân trang
+def count_total_customers(db: Session) -> int:
+    return db.query(Customer).count()
+
 # CUS-API-03: Xem chi tiết khách hàng
 def get_customer_by_id(db: Session, customer_id: int) -> Customer:
     customer = db.query(Customer).filter(Customer.id == customer_id).first()
@@ -236,6 +240,18 @@ def search_customers(db: Session, query_str: str, skip: int = 0, limit: int = 10
         )
     ).order_by(Customer.id.desc()).offset(skip).limit(limit).all()
 
+def count_search_customers(db: Session, query_str: str) -> int:
+    search_pattern = f"%{query_str}%"
+    # Điều kiện filter phải y hệt như hàm lấy danh sách ở trên
+    return db.query(Customer).filter(
+        or_(
+            Customer.full_name.ilike(search_pattern),
+            Customer.phone.ilike(search_pattern),
+            Customer.email.ilike(search_pattern),
+            Customer.customer_code.ilike(search_pattern)
+        )
+    ).count()
+
 # CUS-API-07: API lọc khách hàng theo trạng thái
 def filter_customers_by_status(db: Session, status_param: str, skip: int = 0, limit: int = 100) -> list[Customer]:
     # Xác thực giá trị lọc đầu vào để phù hợp với CheckConstraint của Database
@@ -248,6 +264,12 @@ def filter_customers_by_status(db: Session, status_param: str, skip: int = 0, li
     return db.query(Customer).filter(
         Customer.status == status_param
     ).order_by(Customer.id.desc()).offset(skip).limit(limit).all()
+
+def count_filter_customers(db: Session, status_param: str) -> int:
+    # Đếm tổng số lượng khách hàng theo đúng trạng thái truyền vào
+    return db.query(Customer).filter(
+        Customer.status == status_param
+    ).count()
 
 # CUS-API-08: API upload/lưu ảnh khách hàng
 # Giới hạn kích thước file tải lên (3MB)
