@@ -81,7 +81,7 @@ class Customer(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('active', 'inactive', 'deleted')",
+            "status IN ('active', 'inactive')",
             name="chk_customer_status",
         ),
         CheckConstraint(
