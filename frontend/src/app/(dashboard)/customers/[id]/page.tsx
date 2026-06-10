@@ -47,11 +47,6 @@ const statusConfig: Record<
     className:
       "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
   },
-  vip: {
-    label: "VIP ⭐",
-    className:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  },
 };
 
 const genderLabel: Record<string, string> = {
@@ -328,7 +323,12 @@ export default function CustomerDetailPage() {
               }
             />
             <InfoRow label="Ngày tạo" value={formatDate(customer.created_at)} />
-            <InfoRow label="Cập nhật" value={formatDate(customer.updated_at)} />
+            <InfoRow
+              label="Cập nhật"
+              value={
+                customer.updated_at ? formatDateTime(customer.updated_at) : "—"
+              }
+            />
           </dl>
 
           {customer.note && (

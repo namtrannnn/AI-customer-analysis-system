@@ -11,7 +11,7 @@ export interface PersonProfile {
 }
 
 // ─── Customer (khách đã định danh) ───────────────────────────────────────────
-export type CustomerStatus = "active" | "inactive" | "vip";
+export type CustomerStatus = "active" | "inactive";
 export type CustomerGender = "male" | "female" | "other";
 
 export interface Customer {
@@ -27,13 +27,11 @@ export interface Customer {
   created_at: string;
   updated_at: string | null;
 
-  // Thống kê cơ bản (join từ visit_sessions / orders)
   total_visits: number;
   total_orders: number;
   total_spent: number;
   last_visited_at: string | null;
 
-  // Mapping với person_profile
   person_profile_id: number | null;
 }
 
@@ -65,7 +63,7 @@ export interface CustomerCreatePayload {
   full_name: string;
   phone?: string;
   email?: string;
-  gender?: CustomerGender;
+  gender: CustomerGender;
   status?: CustomerStatus;
   note?: string;
   avatar_url?: string;

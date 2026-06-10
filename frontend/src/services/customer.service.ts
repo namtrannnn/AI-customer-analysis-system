@@ -1,18 +1,4 @@
-/**
- * Customer Service
- *
- * Hiện tại dùng mock data với delay giả lập.
- * Khi có backend: xóa toàn bộ phần mock và uncomment các dòng `http.*`
- */
-
-import { delay } from "./api";
-import {
-  MOCK_CUSTOMERS,
-  MOCK_VISIT_SESSIONS,
-  MOCK_ORDERS,
-  getNextCustomerId,
-  getNextCustomerCode,
-} from "@/mocks/customers.mock";
+import { http } from "@/lib/http";
 import type {
   Customer,
   CustomerCreatePayload,
@@ -21,201 +7,171 @@ import type {
   PaginatedResponse,
   VisitSession,
   Order,
+  PersonProfile,
+  AnonymousCreatePayload,
 } from "@/types/customer.type";
 
-// In-memory store (reset khi reload trang — đúng hành vi mock)
-let customers: Customer[] = [...MOCK_CUSTOMERS];
+// ─── Anonymous profile: camera tạo khách ẩn danh ─────────────────────────────
+export async function createAnonymousProfile(
+  payload: AnonymousCreatePayload,
+): Promise<PersonProfile> {
+  return http.post<PersonProfile>("/customers/anonymous", payload);
+}
 
-// ─── List with filter + pagination ───────────────────────────────────────────
+// ─── List with client-side pagination ─────────────────────────────────────────
 export async function getCustomers(
-  params: CustomerFilterParams = {}
+  params: CustomerFilterParams = {},
 ): Promise<PaginatedResponse<Customer>> {
-  await delay();
+  const {
+    page = 1,
+    limit = 10,
+    search = "",
+    status = "",
+    gender = "",
+  } = params;
 
-  const { search = "", status = "", gender = "", page = 1, limit = 10 } = params;
+  const keyword = search.trim();
+  const skip = (page - 1) * limit;
 
-  let result = [...customers];
+  let endpoint = "/customers/";
+  let queryParams: Record<string, string | number> = {
+    skip,
+    limit,
+  };
 
-  if (search.trim()) {
-    const q = search.toLowerCase();
-    result = result.filter(
-      (c) =>
-        c.full_name.toLowerCase().includes(q) ||
-        c.customer_code.toLowerCase().includes(q) ||
-        c.phone?.includes(q) ||
-        c.email?.toLowerCase().includes(q)
-    );
+  // BE search dùng /customers/search?q=
+  if (keyword) {
+    endpoint = "/customers/search";
+    queryParams = {
+      q: keyword,
+      skip,
+      limit,
+    };
   }
 
-  if (status) result = result.filter((c) => c.status === status);
-  if (gender) result = result.filter((c) => c.gender === gender);
+  // BE filter status dùng /customers/filter?status=
+  // Chỉ dùng khi không search, vì BE chưa có API gộp search + status.
+  else if (status) {
+    endpoint = "/customers/filter";
+    queryParams = {
+      status,
+      skip,
+      limit,
+    };
+  }
 
-  // Sort: mới nhất trước
-  result.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  const response = await http.raw.get(endpoint, {
+    params: queryParams,
+  });
 
-  const total = result.length;
-  const total_pages = Math.ceil(total / limit);
-  const data = result.slice((page - 1) * limit, page * limit);
+  const json = response.data;
 
-  return { data, total, page, limit, total_pages };
+  let data: Customer[] = Array.isArray(json.data) ? json.data : [];
 
-  // ── Khi có backend ──
-  // const query = new URLSearchParams({ ...params } as Record<string, string>);
-  // return http.get<PaginatedResponse<Customer>>(`/customers?${query}`);
+  // BE hiện tại chưa có filter gender, nên gender vẫn phải lọc FE.
+  if (gender) {
+    data = data.filter((customer) => customer.gender === gender);
+  }
+
+  /**
+   * Lưu ý:
+   * BE hiện tại đang trả total = len(customers),
+   * tức là total chỉ bằng số bản ghi của trang hiện tại,
+   * không phải tổng toàn bộ DB.
+   */
+  const total = json.total ?? json.meta?.total ?? data.length;
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    total_pages: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
+// ─── Filter by status từ BE ───────────────────────────────────────────────────
+export async function filterCustomersByStatus(
+  status: "active" | "inactive",
+  params: Pick<CustomerFilterParams, "page" | "limit"> = {},
+): Promise<PaginatedResponse<Customer>> {
+  const { page = 1, limit = 10 } = params;
+
+  const skip = (page - 1) * limit;
+
+  const response = await http.raw.get("/customers/filter", {
+    params: {
+      status,
+      skip,
+      limit,
+    },
+  });
+
+  const json = response.data;
+  const data: Customer[] = Array.isArray(json.data) ? json.data : [];
+
+  const total = json.total ?? json.meta?.total ?? data.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+
+  return {
+    data,
+    total,
+    page,
+    limit,
+    total_pages: totalPages,
+  };
 }
 
 // ─── Get by ID ────────────────────────────────────────────────────────────────
 export async function getCustomerById(id: number): Promise<Customer> {
-  await delay();
-
-  const found = customers.find((c) => c.id === id);
-  if (!found) throw new Error("Không tìm thấy khách hàng");
-
-  return { ...found };
-
-  // ── Khi có backend ──
-  // return http.get<Customer>(`/customers/${id}`);
+  return http.get<Customer>(`/customers/${id}`);
 }
 
 // ─── Create ───────────────────────────────────────────────────────────────────
 export async function createCustomer(
-  payload: CustomerCreatePayload
+  payload: CustomerCreatePayload,
 ): Promise<Customer> {
-  await delay();
-
-  // Validate phone unique
-  if (payload.phone) {
-    const exists = customers.find((c) => c.phone === payload.phone);
-    if (exists) throw new Error("Số điện thoại đã tồn tại");
-  }
-
-  const isAnonymous = !payload.full_name || payload.full_name.startsWith("Khách ẩn danh");
-  const newId = getNextCustomerId();
-
-  const newCustomer: Customer = {
-    id: newId,
-    customer_code: getNextCustomerCode(isAnonymous),
-    full_name: payload.full_name ?? `Khách ẩn danh #${newId}`,
-    phone: payload.phone ?? null,
-    email: payload.email ?? null,
-    gender: payload.gender ?? null,
-    status: payload.status ?? "active",
-    avatar_url: payload.avatar_url ?? null,
-    note: payload.note ?? null,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-    total_visits: 0,
-    total_orders: 0,
-    total_spent: 0,
-    last_visited_at: null,
-    person_profile_id: payload.person_profile_id ?? null,
-  };
-
-  customers = [newCustomer, ...customers];
-  return { ...newCustomer };
-
-  // ── Khi có backend ──
-  // return http.post<Customer>("/customers", payload);
+  return http.post<Customer>("/customers/", payload);
 }
 
 // ─── Update ───────────────────────────────────────────────────────────────────
 export async function updateCustomer(
   id: number,
-  payload: CustomerUpdatePayload
+  payload: CustomerUpdatePayload,
 ): Promise<Customer> {
-  await delay();
-
-  const idx = customers.findIndex((c) => c.id === id);
-  if (idx === -1) throw new Error("Không tìm thấy khách hàng");
-
-  // Validate phone unique (exclude self)
-  if (payload.phone) {
-    const exists = customers.find((c) => c.phone === payload.phone && c.id !== id);
-    if (exists) throw new Error("Số điện thoại đã tồn tại");
-  }
-
-  const updated: Customer = {
-    ...customers[idx],
-    ...payload,
-    updated_at: new Date().toISOString(),
-  };
-
-  customers[idx] = updated;
-  return { ...updated };
-
-  // ── Khi có backend ──
-  // return http.patch<Customer>(`/customers/${id}`, payload);
+  return http.patch<Customer>(`/customers/${id}`, payload);
 }
 
 // ─── Soft delete ──────────────────────────────────────────────────────────────
-export async function deleteCustomer(id: number): Promise<void> {
-  await delay();
+export async function deleteCustomer(id: number): Promise<null> {
+  return http.delete<null>(`/customers/${id}`);
+}
 
-  const idx = customers.findIndex((c) => c.id === id);
-  if (idx === -1) throw new Error("Không tìm thấy khách hàng");
+// ─── Upload avatar / ảnh khuôn mặt ────────────────────────────────────────────
+export async function uploadCustomerAvatar(
+  customerId: number,
+  file: File,
+): Promise<Customer> {
+  const formData = new FormData();
+  formData.append("file", file);
 
-  // Soft delete: set status = inactive (giả lập deleted_at nếu cần)
-  customers[idx] = {
-    ...customers[idx],
-    status: "inactive",
-    updated_at: new Date().toISOString(),
-  };
-
-  // ── Khi có backend ──
-  // return http.delete(`/customers/${id}`);
+  return http.post<Customer>(`/customers/${customerId}/avatar`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
 }
 
 // ─── Visit sessions ───────────────────────────────────────────────────────────
 export async function getCustomerVisitHistory(
-  customerId: number
+  customerId: number,
 ): Promise<VisitSession[]> {
-  await delay();
-
-  const sessions = MOCK_VISIT_SESSIONS[customerId] ?? [];
-  return [...sessions].sort(
-    (a, b) => new Date(b.entry_time).getTime() - new Date(a.entry_time).getTime()
-  );
-
-  // ── Khi có backend ──
-  // return http.get<VisitSession[]>(`/customers/${customerId}/visits`);
+  return http.get<VisitSession[]>(`/customers/${customerId}/visits`);
 }
 
 // ─── Order history ────────────────────────────────────────────────────────────
 export async function getCustomerOrderHistory(
-  customerId: number
+  customerId: number,
 ): Promise<Order[]> {
-  await delay();
-
-  const orders = MOCK_ORDERS[customerId] ?? [];
-  return [...orders].sort(
-    (a, b) => new Date(b.order_time).getTime() - new Date(a.order_time).getTime()
-  );
-
-  // ── Khi có backend ──
-  // return http.get<Order[]>(`/customers/${customerId}/orders`);
-}
-
-// ─── Upload avatar (mock trả về URL giả) ──────────────────────────────────────
-export async function uploadCustomerAvatar(
-  _customerId: number,
-  file: File
-): Promise<string> {
-  await delay(800);
-
-  // Mock: trả về URL từ dicebear dựa trên tên file
-  const seed = encodeURIComponent(file.name.replace(/\.[^.]+$/, ""));
-  return `https://api.dicebear.com/7.x/personas/svg?seed=${seed}`;
-
-  // ── Khi có backend ──
-  // const form = new FormData();
-  // form.append("file", file);
-  // const res = await fetch(`${BASE_URL}/customers/${_customerId}/avatar`, {
-  //   method: "POST",
-  //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-  //   body: form,
-  // });
-  // const json = await res.json();
-  // return json.data.avatar_url;
+  return http.get<Order[]>(`/customers/${customerId}/orders`);
 }
