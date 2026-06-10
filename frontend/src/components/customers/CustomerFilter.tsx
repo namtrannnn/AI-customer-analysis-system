@@ -68,7 +68,7 @@ export default function CustomerFilter({
       </div>
 
       {/* Gender filter */}
-      <div>
+      {/* <div>
         <select
           value={params.gender ?? ""}
           onChange={(e) =>
@@ -86,7 +86,7 @@ export default function CustomerFilter({
             </option>
           ))}
         </select>
-      </div>
+      </div> */}
 
       {/* Reset */}
       {hasFilter && (

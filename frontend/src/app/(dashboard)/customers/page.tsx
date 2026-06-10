@@ -15,7 +15,6 @@ import {
   createCustomer,
   updateCustomer,
   deleteCustomer,
-  filterCustomersByStatus,
 } from "@/services/customer.service";
 import type {
   Customer,
@@ -25,7 +24,7 @@ import type {
   PaginatedResponse,
 } from "@/types/customer.type";
 import { useDebounce } from "@/hooks/useDebounce";
-
+import { useToast } from "@/components/ui/ToastProvider";
 import {
   Users,
   UserCheck,
@@ -108,16 +107,11 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CustomerFilterParams>(DEFAULT_FILTER);
-
+  const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
 
   const debouncedSearch = useDebounce(filter.search, 400);
 
@@ -143,11 +137,6 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
-
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   function getApiErrorMessage(e: unknown) {
     const err = e as {
@@ -189,7 +178,7 @@ export default function CustomersPage() {
 
       await createCustomer(cleanPayload);
 
-      showToast("success", "Thêm khách hàng thành công");
+      toast.success(`Đã thêm khách hàng "${payload.full_name}"`);
 
       setAddOpen(false);
 
@@ -202,7 +191,7 @@ export default function CustomersPage() {
         await fetchData();
       }
     } catch (e: unknown) {
-      showToast("error", getApiErrorMessage(e));
+      toast.error(getApiErrorMessage(e));
     }
   }
 
@@ -211,11 +200,10 @@ export default function CustomersPage() {
 
     try {
       await updateCustomer(editTarget.id, payload);
-
-      showToast("success", "Cập nhật thông tin thành công");
+      toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
       await fetchData();
     } catch (e: unknown) {
-      showToast("error", getApiErrorMessage(e));
+      toast.error(getApiErrorMessage(e));
       throw e;
     }
   }
@@ -227,13 +215,15 @@ export default function CustomersPage() {
 
     try {
       await deleteCustomer(deleteTarget.id);
+      toast.success(
+        `Đã chuyển "${deleteTarget.full_name}" sang ngừng hoạt động`,
+      );
 
-      showToast("success", `Đã xóa "${deleteTarget.full_name}"`);
       setDeleteTarget(null);
 
       await fetchData();
     } catch (e: unknown) {
-      showToast("error", getApiErrorMessage(e));
+      toast.error(getApiErrorMessage(e));
     } finally {
       setDeleteLoading(false);
     }
@@ -489,27 +479,6 @@ export default function CustomersPage() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl backdrop-blur ${
-            toast.type === "success"
-              ? "bg-emerald-600 text-white shadow-emerald-600/25"
-              : "bg-red-600 text-white shadow-red-600/25"
-          }`}
-          role="alert"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20">
-            {toast.type === "success" ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <AlertCircle className="h-4 w-4" />
-            )}
-          </div>
-
-          <span className="text-sm font-bold">{toast.msg}</span>
-        </div>
-      )}
     </div>
   );
 }

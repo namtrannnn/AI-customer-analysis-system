@@ -10,6 +10,7 @@ import {
 } from "@/components/customers/CustomerModal";
 import Loading from "@/components/ui/Loading";
 import Button from "@/components/ui/Button";
+import { useToast } from "@/components/ui/ToastProvider";
 import {
   getCustomerById,
   updateCustomer,
@@ -67,7 +68,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const customerId = Number(id);
-
+  const toast = useToast();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [visits, setVisits] = useState<VisitSession[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -79,12 +80,6 @@ export default function CustomerDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Toast
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
 
   // ─── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -109,35 +104,59 @@ export default function CustomerDetailPage() {
     if (!isNaN(customerId)) load();
   }, [customerId]);
 
-  // ─── Toast helper ─────────────────────────────────────────────────────────────
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
+  function getApiErrorMessage(e: unknown) {
+    const err = e as {
+      response?: {
+        data?: {
+          detail?: string;
+          message?: string;
+        };
+      };
+      message?: string;
+    };
 
+    return (
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      "Có lỗi xảy ra"
+    );
+  }
   // ─── Handlers ────────────────────────────────────────────────────────────────
   async function handleUpdate(payload: CustomerCreatePayload) {
     if (!customer) return;
-    const updated = await updateCustomer(customer.id, payload);
-    setCustomer(updated);
-    showToast("success", "Cập nhật thông tin thành công");
-  }
 
-  async function handleDelete() {
-    if (!customer) return;
-    setDeleteLoading(true);
     try {
-      await deleteCustomer(customer.id);
-      showToast("success", `Đã xóa "${customer.full_name}"`);
-      setTimeout(() => router.push("/customers"), 1000);
+      const updated = await updateCustomer(customer.id, payload);
+
+      setCustomer(updated);
+      toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Xóa thất bại");
-    } finally {
-      setDeleteLoading(false);
-      setDeleteOpen(false);
+      toast.error(getApiErrorMessage(e));
+      throw e;
     }
   }
+  async function handleDelete() {
+    if (!customer) return;
 
+    setDeleteLoading(true);
+
+    try {
+      await deleteCustomer(customer.id);
+
+      toast.success(`Đã chuyển "${customer.full_name}" sang ngừng hoạt động`);
+
+      setDeleteOpen(false);
+
+      setTimeout(() => {
+        router.push("/customers");
+      }, 1000);
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
   // ─── Render ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (

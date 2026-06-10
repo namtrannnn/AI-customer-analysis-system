@@ -22,63 +22,23 @@ export async function createAnonymousProfile(
 export async function getCustomers(
   params: CustomerFilterParams = {},
 ): Promise<PaginatedResponse<Customer>> {
-  const {
-    page = 1,
-    limit = 10,
-    search = "",
-    status = "",
-    gender = "",
-  } = params;
+  const { page = 1, limit = 10, search = "", status = "" } = params;
 
   const keyword = search.trim();
   const skip = (page - 1) * limit;
 
-  let endpoint = "/customers/";
-  let queryParams: Record<string, string | number> = {
-    skip,
-    limit,
-  };
-
-  // BE search dùng /customers/search?q=
-  if (keyword) {
-    endpoint = "/customers/search";
-    queryParams = {
-      q: keyword,
+  const response = await http.raw.get("/customers/", {
+    params: {
+      q: keyword || undefined,
+      status: status || undefined,
       skip,
       limit,
-    };
-  }
-
-  // BE filter status dùng /customers/filter?status=
-  // Chỉ dùng khi không search, vì BE chưa có API gộp search + status.
-  else if (status) {
-    endpoint = "/customers/filter";
-    queryParams = {
-      status,
-      skip,
-      limit,
-    };
-  }
-
-  const response = await http.raw.get(endpoint, {
-    params: queryParams,
+    },
   });
 
   const json = response.data;
 
-  let data: Customer[] = Array.isArray(json.data) ? json.data : [];
-
-  // BE hiện tại chưa có filter gender, nên gender vẫn phải lọc FE.
-  if (gender) {
-    data = data.filter((customer) => customer.gender === gender);
-  }
-
-  /**
-   * Lưu ý:
-   * BE hiện tại đang trả total = len(customers),
-   * tức là total chỉ bằng số bản ghi của trang hiện tại,
-   * không phải tổng toàn bộ DB.
-   */
+  const data: Customer[] = Array.isArray(json.data) ? json.data : [];
   const total = json.total ?? json.meta?.total ?? data.length;
 
   return {
@@ -87,38 +47,6 @@ export async function getCustomers(
     page,
     limit,
     total_pages: Math.max(1, Math.ceil(total / limit)),
-  };
-}
-
-// ─── Filter by status từ BE ───────────────────────────────────────────────────
-export async function filterCustomersByStatus(
-  status: "active" | "inactive",
-  params: Pick<CustomerFilterParams, "page" | "limit"> = {},
-): Promise<PaginatedResponse<Customer>> {
-  const { page = 1, limit = 10 } = params;
-
-  const skip = (page - 1) * limit;
-
-  const response = await http.raw.get("/customers/filter", {
-    params: {
-      status,
-      skip,
-      limit,
-    },
-  });
-
-  const json = response.data;
-  const data: Customer[] = Array.isArray(json.data) ? json.data : [];
-
-  const total = json.total ?? json.meta?.total ?? data.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
-
-  return {
-    data,
-    total,
-    page,
-    limit,
-    total_pages: totalPages,
   };
 }
 
