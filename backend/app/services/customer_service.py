@@ -1,4 +1,4 @@
-from datetime import time
+import time
 import os
 import shutil
 
@@ -9,16 +9,14 @@ from fastapi import HTTPException, UploadFile, status
 
 from app.models.customer import Customer
 from app.schemas.customer_schema import AnonymousCreate, CustomerCreate, CustomerUpdate
-from backend.app.models.customer_identity import CustomerIdentity
-from backend.app.models.order import Order
-from backend.app.models.person_profile import PersonProfile
-from backend.app.models.visit_sessions import VisitSession
-
+from app.models.customer_identity import CustomerIdentity
+from app.models.order import Order
+from app.models.person_profile import PersonProfile
+from app.models.visit_sessions import VisitSession
 
 
 def generate_customer_code(number: int) -> str:
     return f"CUS{number:06d}"
-
 
 def get_next_customer_code(db: Session) -> str:
     result = db.execute(text("SELECT nextval('customer_code_seq')"))
@@ -127,9 +125,16 @@ def create_customer(db: Session, payload: CustomerCreate) -> Customer:
         db.commit()
         db.refresh(new_customer)
         return new_customer
-    except IntegrityError:
+    except IntegrityError as e:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Lỗi dữ liệu đầu vào. Vui lòng kiểm tra lại.")
+        
+        # Lấy thông báo lỗi gốc từ database (nếu có), nếu không thì lấy chuỗi lỗi mặc định
+        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
+        
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Lỗi dữ liệu đầu vào. Vui lòng kiểm tra lại. Chi tiết: {error_message}"
+        )
 
 # CUS-API-02: Xem danh sách khách hàng
 def get_list_customers(db: Session, skip: int = 0, limit: int = 100) -> list[Customer]:

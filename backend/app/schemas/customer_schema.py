@@ -3,6 +3,22 @@ from decimal import Decimal
 import re
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+# Schema nhận dữ liệu khi camera tạo khách ẩn danh
+class AnonymousCreate(BaseModel):
+    confidence_avg: float | None = Field(default=None, ge=0.0, le=1.0, description="Độ tin cậy trung bình của khuôn mặt")
+
+# Schema trả về thông tin hồ sơ camera
+class PersonProfileResponse(BaseModel):
+    id: int
+    anonymous_code: str
+    person_type: str
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    total_visits: int
+    confidence_avg: float | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 class CustomerBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100)

@@ -9,7 +9,7 @@ from app.database.session import get_db
 from app.utils.response import success_response
 
 router = APIRouter(
-    prefix="/api/v1/customers", 
+    prefix="/api/customers", 
     tags=["Customers"]
 )
 
