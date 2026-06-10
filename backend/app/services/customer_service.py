@@ -139,18 +139,23 @@ def get_list_customers(
     db: Session, 
     search_query: str | None = None, 
     status_param: str | None = None, 
+    gender_param: str | None = None,  # Thêm bộ lọc giới tính
     skip: int = 0, 
     limit: int = 100
 ) -> list[Customer]:
     
-    # 1. Khởi tạo câu truy vấn gốc
+    # Khởi tạo câu truy vấn gốc
     query = db.query(Customer)
     
-    # 2. Đắp thêm điều kiện Lọc (nếu có)
+    # Đắp điều kiện lọc trạng thái (nếu có)
     if status_param:
         query = query.filter(Customer.status == status_param)
         
-    # 3. Đắp thêm điều kiện Tìm kiếm (nếu có)
+    # Đắp điều kiện lọc giới tính (nếu có)
+    if gender_param:
+        query = query.filter(Customer.gender == gender_param)
+        
+    # Đắp điều kiện tìm kiếm từ khóa (nếu có)
     if search_query:
         search_pattern = f"%{search_query}%"
         query = query.filter(
@@ -162,20 +167,26 @@ def get_list_customers(
             )
         )
         
-    # 4. Thực thi truy vấn với phân trang
+    # thực thi truy vấn với phân trang
     return query.order_by(Customer.id.desc()).offset(skip).limit(limit).all()
+
 
 def count_list_customers(
     db: Session, 
     search_query: str | None = None, 
-    status_param: str | None = None
+    status_param: str | None = None,
+    gender_param: str | None = None  # Thêm bộ lọc giới tính cho hàm đếm tổng
 ) -> int:
     
     # Khởi tạo câu đếm gốc
     query = db.query(Customer)
     
+    # Điều kiện đếm phải khớp 100% với hàm lấy danh sách ở trên
     if status_param:
         query = query.filter(Customer.status == status_param)
+        
+    if gender_param:
+        query = query.filter(Customer.gender == gender_param)
         
     if search_query:
         search_pattern = f"%{search_query}%"
@@ -206,11 +217,18 @@ def get_customer_by_id(db: Session, customer_id: int) -> Customer:
 # CUS-API-04: API cập nhật thông tin khách hàng
 def update_customer(db: Session, customer_id: int, payload: CustomerUpdate) -> Customer:
     # Chỉ tìm kiếm các khách hàng chưa bị xóa mềm
-    customer = db.query(Customer).filter(Customer.id == customer_id, Customer.status != "inactive").first()
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+
     if not customer:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Không tìm thấy khách hàng với ID {customer_id}"
+        )
+
+    if customer.status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Không thể cập nhật khách hàng đã bị ngừng hoạt động"
         )
     
     # Chuyển đổi payload thành dict, loại bỏ các trường không được truyền lên (PATCH)
