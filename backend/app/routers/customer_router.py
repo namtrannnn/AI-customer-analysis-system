@@ -30,13 +30,19 @@ def create_customer(payload: schemas.CustomerCreate, db: Session = Depends(get_d
 # CUS-API-02: API xem danh sách khách hàng
 @router.get("/", response_model=StandardResponse[list[schemas.CustomerResponse]])
 def get_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    # Lấy data của trang hiện tại
     customers = services.get_list_customers(db=db, skip=skip, limit=limit)
-    # Lưu ý: Để tối ưu phân trang, bạn có thể viết thêm hàm đếm tổng (count) trong service
-    total = len(customers) 
+    
+    # Lấy tổng số lượng tất cả khách hàng trong DB
+    total = services.count_total_customers(db=db) 
+    
+    # Trả về response chuẩn
     return success_response(
         data=customers, 
         message="Lấy danh sách khách hàng thành công",
-        total=total, skip=skip, limit=limit
+        total=total, 
+        skip=skip, 
+        limit=limit
     )
 
 # CUS-API-06: API tìm kiếm khách hàng
@@ -47,12 +53,18 @@ def search_customers(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
+    # Lấy data theo giới hạn phân trang
     customers = services.search_customers(db=db, query_str=q, skip=skip, limit=limit)
-    total = len(customers)
+    
+    # Lấy tổng số lượng kết quả khớp với từ khóa
+    total = services.count_search_customers(db=db, query_str=q)
+    
     return success_response(
         data=customers, 
         message="Tìm kiếm khách hàng thành công",
-        total=total, skip=skip, limit=limit
+        total=total, 
+        skip=skip, 
+        limit=limit
     )
 
 # CUS-API-07: API lọc khách hàng theo trạng thái
@@ -63,12 +75,18 @@ def filter_customers(
     limit: int = 100,
     db: Session = Depends(get_db)
 ):
+    # Lấy data theo giới hạn phân trang
     customers = services.filter_customers_by_status(db=db, status_param=status, skip=skip, limit=limit)
-    total = len(customers)
+    
+    # Lấy tổng số lượng khách hàng đang có trạng thái này
+    total = services.count_filter_customers(db=db, status_param=status)
+    
     return success_response(
         data=customers, 
         message="Lọc danh sách khách hàng thành công",
-        total=total, skip=skip, limit=limit
+        total=total, 
+        skip=skip, 
+        limit=limit
     )
 
 # CUS-API-03: Xem chi tiết khách hàng
