@@ -19,18 +19,17 @@ import {
 import type {
   Customer,
   CustomerCreatePayload,
+  CustomerUpdatePayload,
   CustomerFilterParams,
   PaginatedResponse,
 } from "@/types/customer.type";
 import { useDebounce } from "@/hooks/useDebounce";
-
+import { useToast } from "@/components/ui/ToastProvider";
 import {
   Users,
   UserCheck,
-  Star,
   UserRound,
   Plus,
-  UserPlus,
   AlertTriangle,
   Check,
   AlertCircle,
@@ -60,19 +59,15 @@ function MiniStat({
   const styles = {
     blue: {
       box: "bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20",
-      dot: "bg-blue-500",
     },
     green: {
       box: "bg-emerald-50 text-emerald-600 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
-      dot: "bg-emerald-500",
     },
     amber: {
       box: "bg-amber-50 text-amber-600 ring-amber-100 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20",
-      dot: "bg-amber-500",
     },
     violet: {
       box: "bg-violet-50 text-violet-600 ring-violet-100 dark:bg-violet-500/10 dark:text-violet-300 dark:ring-violet-500/20",
-      dot: "bg-violet-500",
     },
   }[accent];
 
@@ -112,15 +107,11 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CustomerFilterParams>(DEFAULT_FILTER);
-
+  const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
 
   const debouncedSearch = useDebounce(filter.search, 400);
 
@@ -129,9 +120,14 @@ export default function CustomersPage() {
     setError(null);
 
     try {
-      const data = await getCustomers({ ...filter, search: debouncedSearch });
+      const data = await getCustomers({
+        ...filter,
+        search: debouncedSearch,
+      });
+
       setResult(data);
     } catch (e: unknown) {
+      console.error("CUSTOMER API ERROR:", e);
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra");
     } finally {
       setLoading(false);
@@ -142,23 +138,74 @@ export default function CustomersPage() {
     fetchData();
   }, [fetchData]);
 
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
+  function getApiErrorMessage(e: unknown) {
+    const err = e as {
+      response?: {
+        data?: {
+          detail?: string;
+          message?: string;
+        };
+      };
+      message?: string;
+    };
+
+    return (
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      "Có lỗi xảy ra"
+    );
   }
 
   async function handleCreate(payload: CustomerCreatePayload) {
-    await createCustomer(payload);
-    showToast("success", "Thêm khách hàng thành công");
-    fetchData();
+    try {
+      const cleanPayload: CustomerCreatePayload = {
+        full_name: payload.full_name.trim(),
+        gender: payload.gender ?? "male",
+      };
+
+      if (payload.phone?.trim()) {
+        cleanPayload.phone = payload.phone.trim();
+      }
+
+      if (payload.email?.trim()) {
+        cleanPayload.email = payload.email.trim();
+      }
+
+      if (payload.note?.trim()) {
+        cleanPayload.note = payload.note.trim();
+      }
+
+      await createCustomer(cleanPayload);
+
+      toast.success(`Đã thêm khách hàng "${payload.full_name}"`);
+
+      setAddOpen(false);
+
+      if ((filter.page ?? 1) !== 1) {
+        setFilter((prev) => ({
+          ...prev,
+          page: 1,
+        }));
+      } else {
+        await fetchData();
+      }
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e));
+    }
   }
 
-  async function handleUpdate(payload: CustomerCreatePayload) {
+  async function handleUpdate(payload: CustomerUpdatePayload) {
     if (!editTarget) return;
 
-    await updateCustomer(editTarget.id, payload);
-    showToast("success", "Cập nhật thông tin thành công");
-    fetchData();
+    try {
+      await updateCustomer(editTarget.id, payload);
+      toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
+      await fetchData();
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e));
+      throw e;
+    }
   }
 
   async function handleDelete() {
@@ -168,11 +215,15 @@ export default function CustomersPage() {
 
     try {
       await deleteCustomer(deleteTarget.id);
-      showToast("success", `Đã xóa "${deleteTarget.full_name}"`);
+      toast.success(
+        `Đã chuyển "${deleteTarget.full_name}" sang ngừng hoạt động`,
+      );
+
       setDeleteTarget(null);
-      fetchData();
+
+      await fetchData();
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Xóa thất bại");
+      toast.error(getApiErrorMessage(e));
     } finally {
       setDeleteLoading(false);
     }
@@ -191,8 +242,10 @@ export default function CustomersPage() {
   const totalPages = result?.total_pages ?? 1;
 
   const allCustomers = result?.data ?? [];
-  const vipCount = allCustomers.filter((c) => c.status === "vip").length;
   const activeCount = allCustomers.filter((c) => c.status === "active").length;
+  const inactiveCount = allCustomers.filter(
+    (c) => c.status === "inactive",
+  ).length;
   const anonymousCount = allCustomers.filter(
     (c) => !c.full_name || c.full_name.trim() === "",
   ).length;
@@ -201,7 +254,6 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-5">
-      {/* Stats compact */}
       {result && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <MiniStat
@@ -221,11 +273,11 @@ export default function CustomersPage() {
           />
 
           <MiniStat
-            label="VIP"
-            value={vipCount}
-            description="Khách giá trị cao"
+            label="Ngừng HĐ"
+            value={inactiveCount}
+            description="Đã ngừng hoạt động"
             accent="amber"
-            icon={<Star className="h-5 w-5" />}
+            icon={<AlertCircle className="h-5 w-5" />}
           />
 
           <MiniStat
@@ -238,13 +290,12 @@ export default function CustomersPage() {
         </div>
       )}
 
-      {/* Main content */}
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
         <div className="border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:px-5">
           <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-xl font-semibold  text-slate-900 dark:text-white">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
                   Bộ lọc tìm kiếm
                 </h2>
 
@@ -266,18 +317,7 @@ export default function CustomersPage() {
 
             <div className="flex shrink-0 gap-2">
               <Button
-                variant="secondary"
-                size="sm"
-                icon={<UserPlus className="h-4 w-4" />}
-                onClick={() =>
-                  handleCreate({ full_name: "", status: "active" })
-                }
-              >
-                Thêm ẩn danh
-              </Button>
-
-              <Button
-                size="sm"
+                size="base"
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => setAddOpen(true)}
               >
@@ -358,6 +398,7 @@ export default function CustomersPage() {
 
             <div className="flex flex-wrap items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => updateFilter({ page: page - 1 })}
                 disabled={page <= 1}
                 className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -391,6 +432,7 @@ export default function CustomersPage() {
                     </span>
                   ) : (
                     <button
+                      type="button"
                       key={p}
                       onClick={() => updateFilter({ page: p as number })}
                       className={`flex h-9 min-w-9 items-center justify-center rounded-xl border text-xs font-bold transition ${
@@ -405,6 +447,7 @@ export default function CustomersPage() {
                 )}
 
               <button
+                type="button"
                 onClick={() => updateFilter({ page: page + 1 })}
                 disabled={page >= totalPages}
                 className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -436,27 +479,6 @@ export default function CustomersPage() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-2xl backdrop-blur ${
-            toast.type === "success"
-              ? "bg-emerald-600 text-white shadow-emerald-600/25"
-              : "bg-red-600 text-white shadow-red-600/25"
-          }`}
-          role="alert"
-        >
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/20">
-            {toast.type === "success" ? (
-              <Check className="h-4 w-4" />
-            ) : (
-              <AlertCircle className="h-4 w-4" />
-            )}
-          </div>
-
-          <span className="text-sm font-bold">{toast.msg}</span>
-        </div>
-      )}
     </div>
   );
 }

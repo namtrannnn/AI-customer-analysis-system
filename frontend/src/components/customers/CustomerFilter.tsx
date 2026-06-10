@@ -1,7 +1,12 @@
 "use client";
 
-import { CustomerFilterParams, CustomerStatus, CustomerGender } from "@/types/customer.type";
+import {
+  CustomerFilterParams,
+  CustomerStatus,
+  CustomerGender,
+} from "@/types/customer.type";
 import Input from "@/components/ui/Input";
+import { Search, X } from "lucide-react";
 
 interface CustomerFilterProps {
   params: CustomerFilterParams;
@@ -13,7 +18,6 @@ const statusOptions: { value: CustomerStatus | ""; label: string }[] = [
   { value: "", label: "Tất cả trạng thái" },
   { value: "active", label: "Đang hoạt động" },
   { value: "inactive", label: "Ngừng hoạt động" },
-  { value: "vip", label: "VIP" },
 ];
 
 const genderOptions: { value: CustomerGender | ""; label: string }[] = [
@@ -28,8 +32,7 @@ export default function CustomerFilter({
   onChange,
   onReset,
 }: CustomerFilterProps) {
-  const hasFilter =
-    !!params.search || !!params.status || !!params.gender;
+  const hasFilter = !!params.search || !!params.status || !!params.gender;
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -39,11 +42,7 @@ export default function CustomerFilter({
           placeholder="Tìm theo tên, SĐT, mã KH..."
           value={params.search ?? ""}
           onChange={(e) => onChange({ search: e.target.value, page: 1 })}
-          leftIcon={
-            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
-            </svg>
-          }
+          leftIcon={<Search className="h-4 w-4" />}
         />
       </div>
 
@@ -52,9 +51,12 @@ export default function CustomerFilter({
         <select
           value={params.status ?? ""}
           onChange={(e) =>
-            onChange({ status: e.target.value as CustomerStatus | "", page: 1 })
+            onChange({
+              status: e.target.value as CustomerStatus | "",
+              page: 1,
+            })
           }
-          className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           aria-label="Lọc trạng thái"
         >
           {statusOptions.map((opt) => (
@@ -66,13 +68,16 @@ export default function CustomerFilter({
       </div>
 
       {/* Gender filter */}
-      <div>
+      {/* <div>
         <select
           value={params.gender ?? ""}
           onChange={(e) =>
-            onChange({ gender: e.target.value as CustomerGender | "", page: 1 })
+            onChange({
+              gender: e.target.value as CustomerGender | "",
+              page: 1,
+            })
           }
-          className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           aria-label="Lọc giới tính"
         >
           {genderOptions.map((opt) => (
@@ -81,17 +86,16 @@ export default function CustomerFilter({
             </option>
           ))}
         </select>
-      </div>
+      </div> */}
 
       {/* Reset */}
       {hasFilter && (
         <button
+          type="button"
           onClick={onReset}
-          className="flex items-center gap-1 rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700/50"
         >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-          </svg>
+          <X className="h-4 w-4" />
           Xóa bộ lọc
         </button>
       )}
