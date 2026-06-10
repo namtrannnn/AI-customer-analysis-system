@@ -134,18 +134,61 @@ def create_customer(db: Session, payload: CustomerCreate) -> Customer:
             detail=f"Lỗi dữ liệu đầu vào. Vui lòng kiểm tra lại. Chi tiết: {error_message}"
         )
 
-# CUS-API-02: Xem danh sách khách hàng
-def get_list_customers(db: Session, skip: int = 0, limit: int = 100) -> list[Customer]:
-    # Trả về danh sách, sắp xếp theo ID giảm dần (khách mới nhất lên đầu)
-    return db.query(Customer)\
-             .order_by(Customer.id.desc())\
-             .offset(skip)\
-             .limit(limit)\
-             .all()
+# CUS-API-02-06-07: Xem danh sách khách hàng + lọc + tìm kiếm
+def get_list_customers(
+    db: Session, 
+    search_query: str | None = None, 
+    status_param: str | None = None, 
+    skip: int = 0, 
+    limit: int = 100
+) -> list[Customer]:
+    
+    # 1. Khởi tạo câu truy vấn gốc
+    query = db.query(Customer)
+    
+    # 2. Đắp thêm điều kiện Lọc (nếu có)
+    if status_param:
+        query = query.filter(Customer.status == status_param)
+        
+    # 3. Đắp thêm điều kiện Tìm kiếm (nếu có)
+    if search_query:
+        search_pattern = f"%{search_query}%"
+        query = query.filter(
+            or_(
+                Customer.full_name.ilike(search_pattern),
+                Customer.phone.ilike(search_pattern),
+                Customer.email.ilike(search_pattern),
+                Customer.customer_code.ilike(search_pattern)
+            )
+        )
+        
+    # 4. Thực thi truy vấn với phân trang
+    return query.order_by(Customer.id.desc()).offset(skip).limit(limit).all()
 
-# Hàm đếm tổng số lượng khách hàng để làm phân trang
-def count_total_customers(db: Session) -> int:
-    return db.query(Customer).count()
+def count_list_customers(
+    db: Session, 
+    search_query: str | None = None, 
+    status_param: str | None = None
+) -> int:
+    
+    # Khởi tạo câu đếm gốc
+    query = db.query(Customer)
+    
+    if status_param:
+        query = query.filter(Customer.status == status_param)
+        
+    if search_query:
+        search_pattern = f"%{search_query}%"
+        query = query.filter(
+            or_(
+                Customer.full_name.ilike(search_pattern),
+                Customer.phone.ilike(search_pattern),
+                Customer.email.ilike(search_pattern),
+                Customer.customer_code.ilike(search_pattern)
+            )
+        )
+        
+    return query.count()
 
 # CUS-API-03: Xem chi tiết khách hàng
 def get_customer_by_id(db: Session, customer_id: int) -> Customer:
@@ -225,51 +268,6 @@ def soft_delete_customer(db: Session, customer_id: int) -> dict:
     customer.status = "inactive"
     db.commit()
     return {"message": "Xóa mềm khách hàng thành công."}
-
-# CUS-API-06: API tìm kiếm khách hàng
-def search_customers(db: Session, query_str: str, skip: int = 0, limit: int = 100) -> list[Customer]:
-    search_pattern = f"%{query_str}%"
-    
-    # Tìm kiếm không phân biệt hoa thường trên nhiều trường dữ liệu 
-    return db.query(Customer).filter(
-        or_(
-            Customer.full_name.ilike(search_pattern),
-            Customer.phone.ilike(search_pattern),
-            Customer.email.ilike(search_pattern),
-            Customer.customer_code.ilike(search_pattern)
-        )
-    ).order_by(Customer.id.desc()).offset(skip).limit(limit).all()
-
-def count_search_customers(db: Session, query_str: str) -> int:
-    search_pattern = f"%{query_str}%"
-    # Điều kiện filter phải y hệt như hàm lấy danh sách ở trên
-    return db.query(Customer).filter(
-        or_(
-            Customer.full_name.ilike(search_pattern),
-            Customer.phone.ilike(search_pattern),
-            Customer.email.ilike(search_pattern),
-            Customer.customer_code.ilike(search_pattern)
-        )
-    ).count()
-
-# CUS-API-07: API lọc khách hàng theo trạng thái
-def filter_customers_by_status(db: Session, status_param: str, skip: int = 0, limit: int = 100) -> list[Customer]:
-    # Xác thực giá trị lọc đầu vào để phù hợp với CheckConstraint của Database
-    if status_param not in ["active", "inactive"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Trạng thái lọc không hợp lệ. Chỉ chấp nhận 'active' hoặc 'inactive'."
-        )
-        
-    return db.query(Customer).filter(
-        Customer.status == status_param
-    ).order_by(Customer.id.desc()).offset(skip).limit(limit).all()
-
-def count_filter_customers(db: Session, status_param: str) -> int:
-    # Đếm tổng số lượng khách hàng theo đúng trạng thái truyền vào
-    return db.query(Customer).filter(
-        Customer.status == status_param
-    ).count()
 
 # CUS-API-08: API upload/lưu ảnh khách hàng
 # Giới hạn kích thước file tải lên (3MB)
