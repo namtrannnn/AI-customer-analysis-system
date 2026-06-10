@@ -18,13 +18,15 @@ import {
   getCustomerVisitHistory,
   getCustomerOrderHistory,
 } from "@/services/customer.service";
+
 import type {
   Customer,
-  CustomerCreatePayload,
+  CustomerUpdatePayload,
   VisitSession,
   Order,
   CustomerStatus,
 } from "@/types/customer.type";
+
 import {
   formatDate,
   formatDateTime,
@@ -123,14 +125,17 @@ export default function CustomerDetailPage() {
     );
   }
   // ─── Handlers ────────────────────────────────────────────────────────────────
-  async function handleUpdate(payload: CustomerCreatePayload) {
+  async function handleUpdate(payload: CustomerUpdatePayload) {
     if (!customer) return;
 
     try {
       const updated = await updateCustomer(customer.id, payload);
 
       setCustomer(updated);
-      toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
+
+      toast.success(
+        `Cập nhật thông tin "${payload.full_name ?? customer.full_name}" thành công`,
+      );
     } catch (e: unknown) {
       toast.error(getApiErrorMessage(e));
       throw e;
@@ -531,20 +536,6 @@ export default function CustomerDetailPage() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-
-      {/* ── Toast ── */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "bg-green-600 text-white"
-              : "bg-red-600 text-white"
-          }`}
-          role="alert"
-        >
-          <span className="text-sm font-medium">{toast.msg}</span>
-        </div>
-      )}
     </div>
   );
 }
