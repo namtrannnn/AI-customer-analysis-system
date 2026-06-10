@@ -32,15 +32,16 @@ def create_customer(payload: schemas.CustomerCreate, db: Session = Depends(get_d
 def get_customers(
     q: str | None = Query(None, description="Từ khóa tìm kiếm (tên, sđt, email, mã)"),
     status: str | None = Query(None, description="Lọc theo trạng thái: active, inactive"),
+    gender: str | None = Query(None, description="Lọc theo giới tính: male, female, other"), 
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db)
 ):
-    # Truyền cả từ khóa tìm kiếm và trạng thái vào Service
     customers = services.get_list_customers(
         db=db, 
         search_query=q, 
         status_param=status, 
+        gender_param=gender, 
         skip=skip, 
         limit=limit
     )
@@ -48,7 +49,8 @@ def get_customers(
     total = services.count_list_customers(
         db=db, 
         search_query=q, 
-        status_param=status
+        status_param=status,
+        gender_param=gender
     )
     
     return success_response(

@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.database.session import get_db
 from app.utils.response import error_response, success_response
-from app.routers import customer_router 
+from app.routers import customer_router
+from app.routers import user_router 
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -29,8 +30,9 @@ app.add_middleware(
 )
 
 app.include_router(customer_router.router)
+# app.include_router(user_router.router)
 
-# Xử lý các lỗi do bạn chủ động ném ra (raise HTTPException)
+# Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     return JSONResponse(
@@ -44,13 +46,25 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 # Xử lý các lỗi do Pydantic chặn lại (truyền thiếu full_name, sai sđt)
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Trích xuất các lỗi thành list chuẩn để không bị lỗi JSON serializable
+    clean_errors = []
+    for err in exc.errors():
+        clean_errors.append({
+            "loc": err.get("loc"),
+            "msg": err.get("msg"),
+            "type": err.get("type")
+        })
+        
+    # Gọi hàm error_response để format theo đúng chuẩn hệ thống
+    formatted_content = error_response(
+        message="Dữ liệu đầu vào không hợp lệ",
+        error_code="VALIDATION_ERROR",
+        details=clean_errors
+    )
+        
     return JSONResponse(
         status_code=422,
-        content=error_response(
-            message="Dữ liệu đầu vào không hợp lệ",
-            error_code="VALIDATION_ERROR",
-            details=exc.errors() 
-        )
+        content=formatted_content
     )
 
 

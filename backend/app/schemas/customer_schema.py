@@ -45,14 +45,12 @@ class CustomerBase(BaseModel):
         if v == "": # Xử lý trường hợp frontend gửi chuỗi rỗng
             return None
         if v is not None:
-            # Chấp nhận đầu số Việt Nam (0 hoặc +84) đi kèm 9 chữ số
-            pattern = r"^(0|\+84)[3|5|7|8|9][0-9]{8}$"
             # Đã sửa lại lỗi dấu | bên trong ngoặc vuông
             pattern = r"^(0|\+84)[35789][0-9]{8}$"
             if not re.match(pattern, v):
-                raise ValueError("Số điện thoại không đúng định dạng.")
+                raise ValueError("Số điện thoại không đúng định dạng Việt Nam.")
         return v
-
+    
 # Schema cho request từ Camera tạo khách ẩn danh
 class AnonymousCreate(BaseModel):
     confidence_avg: float | None = None
