@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useRef } from "react";
-import { CustomerCreatePayload, CustomerGender, CustomerStatus } from "@/types/customer.type";
+import { CustomerCreatePayload } from "@/types/customer.type";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
-
+import {
+  customerCreateSchema,
+  customerUpdateSchema,
+} from "@/validations/customer.schema";
 interface CustomerFormProps {
   initialValues?: Partial<CustomerCreatePayload>;
   onSubmit: (payload: CustomerCreatePayload) => Promise<void>;
   onCancel: () => void;
   submitLabel?: string;
+  showStatus?: boolean;
 }
 
 type FormErrors = Partial<Record<keyof CustomerCreatePayload, string>>;
@@ -19,15 +23,15 @@ export default function CustomerForm({
   onSubmit,
   onCancel,
   submitLabel = "Lưu",
+  showStatus = true,
 }: CustomerFormProps) {
   const [values, setValues] = useState<CustomerCreatePayload>({
     full_name: initialValues.full_name ?? "",
     phone: initialValues.phone ?? "",
     email: initialValues.email ?? "",
-    gender: initialValues.gender ?? undefined,
+    gender: initialValues.gender ?? "male",
     status: initialValues.status ?? "active",
     note: initialValues.note ?? "",
-    avatar_url: initialValues.avatar_url ?? "",
   });
 
   const [errors, setErrors] = useState<FormErrors>({});
@@ -35,44 +39,69 @@ export default function CustomerForm({
   const formRef = useRef<HTMLFormElement>(null);
 
   function validate(): boolean {
+    const schema = showStatus ? customerUpdateSchema : customerCreateSchema;
+
+    const result = schema.safeParse(values);
+
+    if (result.success) {
+      setErrors({});
+      return true;
+    }
+
     const errs: FormErrors = {};
 
-    if (!values.full_name?.trim()) {
-      errs.full_name = "Tên khách hàng không được để trống";
-    }
+    for (const issue of result.error.issues) {
+      const field = issue.path[0] as keyof CustomerCreatePayload;
 
-    if (values.phone && !/^(0[3-9]\d{8})$/.test(values.phone)) {
-      errs.phone = "Số điện thoại không hợp lệ (VD: 0901234567)";
-    }
-
-    if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
-      errs.email = "Email không hợp lệ";
+      if (field && !errs[field]) {
+        errs[field] = issue.message;
+      }
     }
 
     setErrors(errs);
-    return Object.keys(errs).length === 0;
+    return false;
   }
+  const set =
+    (field: keyof CustomerCreatePayload) =>
+    (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+      >,
+    ) => {
+      setValues((prev) => ({
+        ...prev,
+        [field]: e.target.value,
+      }));
 
-  const set = (field: keyof CustomerCreatePayload) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
-      setValues((prev) => ({ ...prev, [field]: e.target.value }));
-      if (errors[field]) setErrors((prev) => ({ ...prev, [field]: undefined }));
+      if (errors[field]) {
+        setErrors((prev) => ({
+          ...prev,
+          [field]: undefined,
+        }));
+      }
     };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
     if (!validate()) return;
 
     setLoading(true);
+
     try {
-      // Strip empty strings → undefined
       const payload: CustomerCreatePayload = {
-        ...values,
+        full_name: values.full_name.trim(),
         phone: values.phone?.trim() || undefined,
         email: values.email?.trim() || undefined,
         note: values.note?.trim() || undefined,
-        avatar_url: values.avatar_url?.trim() || undefined,
+        gender: values.gender ?? "male",
       };
+
+      // Chỉ gửi status khi form edit bật showStatus
+      if (showStatus) {
+        payload.status = values.status ?? "active";
+      }
+
       await onSubmit(payload);
     } finally {
       setLoading(false);
@@ -80,8 +109,12 @@ export default function CustomerForm({
   }
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit} noValidate className="space-y-4">
-      {/* Full name */}
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      noValidate
+      className="space-y-4"
+    >
       <Input
         label="Họ và tên"
         placeholder="Nguyễn Văn A"
@@ -92,7 +125,6 @@ export default function CustomerForm({
         autoFocus
       />
 
-      {/* Phone + Email */}
       <div className="grid grid-cols-2 gap-4">
         <Input
           label="Số điện thoại"
@@ -102,6 +134,7 @@ export default function CustomerForm({
           error={errors.phone}
           inputMode="tel"
         />
+
         <Input
           label="Email"
           placeholder="example@email.com"
@@ -112,59 +145,67 @@ export default function CustomerForm({
         />
       </div>
 
-      {/* Gender + Status */}
-      <div className="grid grid-cols-2 gap-4">
+      <div
+        className={`grid gap-4 ${showStatus ? "grid-cols-2" : "grid-cols-1"}`}
+      >
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Giới tính
+            Giới tính <span className="text-red-500">*</span>
           </label>
+
           <select
-            value={values.gender ?? ""}
+            value={values.gender ?? "male"}
             onChange={set("gender")}
-            className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-900 dark:text-slate-200 dark:bg-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
           >
-            <option value="">Không xác định</option>
             <option value="male">Nam</option>
             <option value="female">Nữ</option>
             <option value="other">Khác</option>
           </select>
         </div>
 
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Trạng thái <span className="text-red-500">*</span>
-          </label>
-          <select
-            value={values.status ?? "active"}
-            onChange={set("status")}
-            className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-900 dark:text-slate-200 dark:bg-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-          >
-            <option value="active">Đang hoạt động</option>
-            <option value="inactive">Ngừng hoạt động</option>
-            <option value="vip">VIP</option>
-          </select>
-        </div>
+        {showStatus && (
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Trạng thái <span className="text-red-500">*</span>
+            </label>
+
+            <select
+              value={values.status ?? "active"}
+              onChange={set("status")}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+            >
+              <option value="active">Đang hoạt động</option>
+              <option value="inactive">Ngừng hoạt động</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* Note */}
       <div>
         <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
           Ghi chú
         </label>
+
         <textarea
           value={values.note ?? ""}
           onChange={set("note")}
           rows={3}
           placeholder="Ghi chú về khách hàng..."
-          className="w-full rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-900 dark:text-slate-200 dark:bg-slate-700 placeholder-slate-400 dark:placeholder-slate-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:placeholder-slate-500"
         />
       </div>
 
-      {/* Actions */}
       <div className="flex justify-end gap-2 pt-2">
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={loading}>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={onCancel}
+          disabled={loading}
+        >
           Hủy
         </Button>
+
         <Button type="submit" loading={loading}>
           {submitLabel}
         </Button>

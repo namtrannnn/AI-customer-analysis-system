@@ -3,6 +3,22 @@ from decimal import Decimal
 import re
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+# Schema nhận dữ liệu khi camera tạo khách ẩn danh
+class AnonymousCreate(BaseModel):
+    confidence_avg: float | None = Field(default=None, ge=0.0, le=1.0, description="Độ tin cậy trung bình của khuôn mặt")
+
+# Schema trả về thông tin hồ sơ camera
+class PersonProfileResponse(BaseModel):
+    id: int
+    anonymous_code: str
+    person_type: str
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+    total_visits: int
+    confidence_avg: float | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 class CustomerBase(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=100)
@@ -12,17 +28,29 @@ class CustomerBase(BaseModel):
     avatar_url: str | None = None
     note: str | None = None
 
-    # CUS-API-11: Validate số điện thoại bằng Regex
+    # CUS-API-11: Validate
+    # Validate Giới tính
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        # Nếu có giá trị truyền vào thì phải nằm trong 3 loại
+        if v and v not in ["male", "female", "other"]:
+            raise ValueError("Giới tính chỉ được phép là 'male', 'female', hoặc 'other'.")
+        return v
+
+    # Validate Số điện thoại
     @field_validator("phone")
     @classmethod
     def validate_phone(cls, v: str | None) -> str | None:
+        if v == "": # Xử lý trường hợp frontend gửi chuỗi rỗng
+            return None
         if v is not None:
-            # Chấp nhận đầu số Việt Nam (0 hoặc +84) đi kèm 9 chữ số
-            pattern = r"^(0|\+84)[3|5|7|8|9][0-9]{8}$"
+            # Đã sửa lại lỗi dấu | bên trong ngoặc vuông
+            pattern = r"^(0|\+84)[35789][0-9]{8}$"
             if not re.match(pattern, v):
-                raise ValueError("Số điện thoại không đúng định dạng.")
+                raise ValueError("Số điện thoại không đúng định dạng Việt Nam.")
         return v
-
+    
 # Schema cho request từ Camera tạo khách ẩn danh
 class AnonymousCreate(BaseModel):
     confidence_avg: float | None = None

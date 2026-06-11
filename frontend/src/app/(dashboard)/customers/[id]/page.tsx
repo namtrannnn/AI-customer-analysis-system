@@ -10,6 +10,7 @@ import {
 } from "@/components/customers/CustomerModal";
 import Loading from "@/components/ui/Loading";
 import Button from "@/components/ui/Button";
+import { useToast } from "@/components/ui/ToastProvider";
 import {
   getCustomerById,
   updateCustomer,
@@ -17,13 +18,15 @@ import {
   getCustomerVisitHistory,
   getCustomerOrderHistory,
 } from "@/services/customer.service";
+
 import type {
   Customer,
-  CustomerCreatePayload,
+  CustomerUpdatePayload,
   VisitSession,
   Order,
   CustomerStatus,
 } from "@/types/customer.type";
+
 import {
   formatDate,
   formatDateTime,
@@ -47,11 +50,6 @@ const statusConfig: Record<
     className:
       "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
   },
-  vip: {
-    label: "VIP ⭐",
-    className:
-      "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  },
 };
 
 const genderLabel: Record<string, string> = {
@@ -72,7 +70,7 @@ export default function CustomerDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const customerId = Number(id);
-
+  const toast = useToast();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [visits, setVisits] = useState<VisitSession[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -84,12 +82,6 @@ export default function CustomerDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-
-  // Toast
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
 
   // ─── Load data ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -114,35 +106,62 @@ export default function CustomerDetailPage() {
     if (!isNaN(customerId)) load();
   }, [customerId]);
 
-  // ─── Toast helper ─────────────────────────────────────────────────────────────
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
+  function getApiErrorMessage(e: unknown) {
+    const err = e as {
+      response?: {
+        data?: {
+          detail?: string;
+          message?: string;
+        };
+      };
+      message?: string;
+    };
 
+    return (
+      err.response?.data?.detail ||
+      err.response?.data?.message ||
+      err.message ||
+      "Có lỗi xảy ra"
+    );
+  }
   // ─── Handlers ────────────────────────────────────────────────────────────────
-  async function handleUpdate(payload: CustomerCreatePayload) {
+  async function handleUpdate(payload: CustomerUpdatePayload) {
     if (!customer) return;
-    const updated = await updateCustomer(customer.id, payload);
-    setCustomer(updated);
-    showToast("success", "Cập nhật thông tin thành công");
-  }
 
-  async function handleDelete() {
-    if (!customer) return;
-    setDeleteLoading(true);
     try {
-      await deleteCustomer(customer.id);
-      showToast("success", `Đã xóa "${customer.full_name}"`);
-      setTimeout(() => router.push("/customers"), 1000);
+      const updated = await updateCustomer(customer.id, payload);
+
+      setCustomer(updated);
+
+      toast.success(
+        `Cập nhật thông tin "${payload.full_name ?? customer.full_name}" thành công`,
+      );
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Xóa thất bại");
-    } finally {
-      setDeleteLoading(false);
-      setDeleteOpen(false);
+      toast.error(getApiErrorMessage(e));
+      throw e;
     }
   }
+  async function handleDelete() {
+    if (!customer) return;
 
+    setDeleteLoading(true);
+
+    try {
+      await deleteCustomer(customer.id);
+
+      toast.success(`Đã chuyển "${customer.full_name}" sang ngừng hoạt động`);
+
+      setDeleteOpen(false);
+
+      setTimeout(() => {
+        router.push("/customers");
+      }, 1000);
+    } catch (e: unknown) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
   // ─── Render ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -328,7 +347,12 @@ export default function CustomerDetailPage() {
               }
             />
             <InfoRow label="Ngày tạo" value={formatDate(customer.created_at)} />
-            <InfoRow label="Cập nhật" value={formatDate(customer.updated_at)} />
+            <InfoRow
+              label="Cập nhật"
+              value={
+                customer.updated_at ? formatDateTime(customer.updated_at) : "—"
+              }
+            />
           </dl>
 
           {customer.note && (
@@ -512,20 +536,6 @@ export default function CustomerDetailPage() {
         onConfirm={handleDelete}
         loading={deleteLoading}
       />
-
-      {/* ── Toast ── */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "bg-green-600 text-white"
-              : "bg-red-600 text-white"
-          }`}
-          role="alert"
-        >
-          <span className="text-sm font-medium">{toast.msg}</span>
-        </div>
-      )}
     </div>
   );
 }

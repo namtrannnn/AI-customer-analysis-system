@@ -72,15 +72,24 @@ export default function UsersPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  async function handleCreate(payload: UserCreatePayload, _roleIds: number[]) {
-    await createUser(payload);
+  async function handleCreate(payload: UserCreatePayload, roleIds: number[]) {
+    await createUser({
+      ...payload,
+      role_ids: roleIds,
+    });
+
     showToast("success", "Thêm người dùng thành công");
     fetchData();
   }
 
-  async function handleUpdate(payload: UserUpdatePayload, _roleIds: number[]) {
+  async function handleUpdate(payload: UserUpdatePayload, roleIds: number[]) {
     if (!editTarget) return;
-    await updateUser(editTarget.id, payload);
+
+    await updateUser(editTarget.id, {
+      ...payload,
+      role_ids: roleIds,
+    });
+
     showToast("success", "Cập nhật thành công");
     fetchData();
   }
