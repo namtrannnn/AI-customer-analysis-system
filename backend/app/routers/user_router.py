@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 from typing import Any
 
@@ -7,6 +7,7 @@ from app.schemas.response_schema import StandardResponse
 from app.services import user_service as services
 from app.database.session import get_db 
 from app.utils.response import success_response
+from app.core.dependencies import get_admin_user
 
 router = APIRouter(
     prefix="/api/users", 
@@ -84,8 +85,19 @@ def update_user(user_id: int, payload: schemas.UserUpdate, db: Session = Depends
 
 # CUS-API-5: API xóa mềm user
 @router.delete("/{user_id}", response_model=StandardResponse[Any], status_code=status.HTTP_200_OK)
-def delete_user(user_id: int, db: Session = Depends(get_db)):
-    """API xóa mềm người dùng (chuyển trạng thái sang deleted)"""
+def delete_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    admin_user = Depends(get_admin_user) 
+):
+    """API xóa mềm người dùng (Yêu cầu quyền Admin)"""
+    
+    if admin_user.id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bạn không thể tự xóa tài khoản của chính mình."
+        )
+        
     services.soft_delete_user(db=db, user_id=user_id)
     return success_response(
         data=None, 
