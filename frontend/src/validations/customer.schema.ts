@@ -1,25 +1,52 @@
-import type { CustomerCreatePayload } from "@/types/customer.type";
+import { z } from "zod";
 
-export type FormErrors = Partial<Record<keyof CustomerCreatePayload, string>>;
+export const customerGenderSchema = z.enum(["male", "female", "other"], {
+  message: "Giới tính không hợp lệ",
+});
 
-export function validateCustomer(values: CustomerCreatePayload): FormErrors {
-  const errors: FormErrors = {};
+export const customerStatusSchema = z.enum(["active", "inactive"], {
+  message: "Trạng thái không hợp lệ",
+});
 
-  if (!values.full_name?.trim()) {
-    errors.full_name = "Tên khách hàng không được để trống";
-  } else if (values.full_name.trim().length < 2) {
-    errors.full_name = "Tên phải có ít nhất 2 ký tự";
-  } else if (values.full_name.trim().length > 100) {
-    errors.full_name = "Tên không được vượt quá 100 ký tự";
-  }
+export const customerCreateSchema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, "Tên khách hàng phải có ít nhất 2 ký tự")
+    .max(100, "Tên khách hàng không được vượt quá 100 ký tự"),
 
-  if (values.phone && !/^(0[3-9]\d{8})$/.test(values.phone.trim())) {
-    errors.phone = "Số điện thoại không hợp lệ (VD: 0901234567)";
-  }
+  phone: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (value) => !value || /^(0[35789]\d{8})$/.test(value),
+      "Số điện thoại không hợp lệ (VD: 0901234567)",
+    ),
 
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email.trim())) {
-    errors.email = "Email không hợp lệ";
-  }
+  email: z
+    .string()
+    .trim()
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (value) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      "Email không hợp lệ",
+    ),
 
-  return errors;
-}
+  gender: customerGenderSchema,
+
+  note: z.string().trim().optional().or(z.literal("")),
+
+  avatar_url: z.string().trim().optional().or(z.literal("")),
+
+  person_profile_id: z.number().positive().optional(),
+});
+
+export const customerUpdateSchema = customerCreateSchema.partial().extend({
+  status: customerStatusSchema.optional(),
+});
+
+export type CustomerCreateFormValues = z.infer<typeof customerCreateSchema>;
+export type CustomerUpdateFormValues = z.infer<typeof customerUpdateSchema>;

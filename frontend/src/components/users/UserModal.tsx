@@ -2,7 +2,12 @@
 
 import Modal from "@/components/ui/Modal";
 import UserForm from "./UserForm";
-import type { User, UserCreatePayload, UserUpdatePayload } from "@/types/user.type";
+import type {
+  User,
+  UserCreatePayload,
+  UserUpdatePayload,
+} from "@/types/user.type";
+import { AlertTriangle, Loader2 } from "lucide-react";
 
 // ─── Add ──────────────────────────────────────────────────────────────────────
 interface UserAddModalProps {
@@ -34,11 +39,21 @@ interface UserEditModalProps {
   onSubmit: (payload: UserUpdatePayload, roleIds: number[]) => Promise<void>;
 }
 
-export function UserEditModal({ open, onClose, user, onSubmit }: UserEditModalProps) {
+export function UserEditModal({
+  open,
+  onClose,
+  user,
+  onSubmit,
+}: UserEditModalProps) {
   if (!user) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Cập nhật: ${user.full_name}`} size="lg">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={`Cập nhật: ${user.full_name}`}
+      size="lg"
+    >
       <UserForm
         mode="edit"
         initialValues={{
@@ -48,7 +63,7 @@ export function UserEditModal({ open, onClose, user, onSubmit }: UserEditModalPr
           phone: user.phone ?? "",
           status: user.status,
         }}
-        initialRoleIds={user.roles.map((r) => r.role_id)}
+        initialRoleIds={user.roles?.map((role) => role.role_id) ?? []}
         onSubmit={async (payload, roleIds) => {
           await onSubmit(payload as UserUpdatePayload, roleIds);
           onClose();
@@ -69,7 +84,11 @@ interface UserDeleteModalProps {
 }
 
 export function UserDeleteModal({
-  open, onClose, user, onConfirm, loading = false,
+  open,
+  onClose,
+  user,
+  onConfirm,
+  loading = false,
 }: UserDeleteModalProps) {
   if (!user) return null;
 
@@ -82,23 +101,21 @@ export function UserDeleteModal({
       footer={
         <>
           <button
+            type="button"
             onClick={onClose}
             disabled={loading}
-            className="rounded-lg border border-slate-300 dark:border-slate-600 px-4 py-2 text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
           >
             Hủy
           </button>
+
           <button
+            type="button"
             onClick={onConfirm}
             disabled={loading}
-            className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+            className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-60"
           >
-            {loading && (
-              <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-              </svg>
-            )}
+            {loading && <Loader2 className="h-4 w-4 animate-spin" />}
             Xác nhận xóa
           </button>
         </>
@@ -106,14 +123,14 @@ export function UserDeleteModal({
     >
       <div className="flex flex-col items-center py-2 text-center">
         <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
-          <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
+          <AlertTriangle className="h-6 w-6 text-red-600 dark:text-red-400" />
         </div>
+
         <p className="text-sm text-slate-700 dark:text-slate-300">
           Xóa người dùng{" "}
           <span className="font-semibold">"{user.full_name}"</span>?
         </p>
+
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
           Tài khoản sẽ bị đặt thành "Ngừng hoạt động".
         </p>

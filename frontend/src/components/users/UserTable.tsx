@@ -6,6 +6,14 @@ import type { User, UserStatus } from "@/types/user.type";
 import { formatDate, timeAgo } from "@/utils/formatDate";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+import {
+  Edit3,
+  Trash2,
+  ShieldCheck,
+  Lock,
+  CheckCircle2,
+  CircleOff,
+} from "lucide-react";
 
 interface UserTableProps {
   users: User[];
@@ -13,10 +21,32 @@ interface UserTableProps {
   onDelete: (user: User) => void;
 }
 
-const statusConfig: Record<UserStatus, { label: string; className: string }> = {
-  active:   { label: "Hoạt động",  className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
-  inactive: { label: "Ngừng HĐ",   className: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
-  locked:   { label: "Bị khóa",    className: "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400" },
+const statusConfig: Record<
+  UserStatus,
+  {
+    label: string;
+    className: string;
+    icon: React.ElementType;
+  }
+> = {
+  active: {
+    label: "Hoạt động",
+    icon: CheckCircle2,
+    className:
+      "bg-emerald-50 text-emerald-700 ring-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20",
+  },
+  inactive: {
+    label: "Ngừng HĐ",
+    icon: CircleOff,
+    className:
+      "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
+  },
+  locked: {
+    label: "Bị khóa",
+    icon: Lock,
+    className:
+      "bg-red-50 text-red-700 ring-red-100 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20",
+  },
 };
 
 export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
@@ -30,107 +60,156 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-slate-200 dark:border-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            <th className="pb-3 pr-4">Người dùng</th>
-            <th className="pb-3 pr-4">Tài khoản</th>
-            <th className="pb-3 pr-4">Nhóm quyền</th>
-            <th className="pb-3 pr-4">Trạng thái</th>
-            <th className="pb-3 pr-4">Đăng nhập gần nhất</th>
-            <th className="pb-3 pr-4">Ngày tạo</th>
-            <th className="pb-3 text-right">Thao tác</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-          {users.map((u) => {
-            const status = statusConfig[u.status];
-            return (
-              <tr key={u.id} className="group hover:bg-slate-50 dark:hover:bg-slate-700/40 transition-colors">
-                {/* Avatar + name */}
-                <td className="py-3 pr-4">
-                  <div className="flex items-center gap-3">
-                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
-                      {u.avatar_url ? (
-                        <Image src={u.avatar_url} alt={u.full_name} fill className="object-cover" sizes="36px" />
-                      ) : (
-                        <span className="flex h-full w-full items-center justify-center text-sm font-semibold text-slate-500 dark:text-slate-400">
-                          {u.full_name.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <Link
-                        href={`/users/${u.id}`}
-                        className="font-medium text-slate-900 dark:text-slate-100 hover:text-blue-600 hover:underline"
-                      >
-                        {u.full_name}
-                      </Link>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">{u.email ?? "—"}</p>
-                    </div>
-                  </div>
-                </td>
-                {/* Username */}
-                <td className="py-3 pr-4">
-                  <code className="rounded bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 text-xs text-slate-700 dark:text-slate-300">
-                    {u.username}
-                  </code>
-                  <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">{u.phone ?? "—"}</p>
-                </td>
-                {/* Roles */}
-                <td className="py-3 pr-4">
-                  <div className="flex flex-wrap gap-1">
-                    {u.roles.length === 0 ? (
-                      <span className="text-xs text-slate-400 dark:text-slate-500">Chưa gán</span>
-                    ) : (
-                      u.roles.map((r) => (
-                        <span
-                          key={r.role_id}
-                          className="inline-flex items-center rounded-full bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-400"
+    <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[980px] text-sm">
+          <thead className="bg-slate-50 dark:bg-slate-900/50">
+            <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <th className="px-4 py-3">Người dùng</th>
+              <th className="px-4 py-3">Tài khoản</th>
+              <th className="px-4 py-3">Nhóm quyền</th>
+              <th className="px-4 py-3">Trạng thái</th>
+              <th className="px-4 py-3">Đăng nhập gần nhất</th>
+              <th className="px-4 py-3">Ngày tạo</th>
+              <th className="px-4 py-3 text-right">Thao tác</th>
+            </tr>
+          </thead>
+
+          <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-700 dark:bg-slate-800">
+            {users.map((user) => {
+              const status = statusConfig[user.status];
+              const StatusIcon = status.icon;
+              const firstChar =
+                user.full_name?.trim()?.charAt(0)?.toUpperCase() || "U";
+
+              return (
+                <tr
+                  key={user.id}
+                  className="group transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/40"
+                >
+                  {/* User */}
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-slate-100 to-slate-200 ring-1 ring-slate-200 dark:from-slate-700 dark:to-slate-800 dark:ring-slate-600">
+                        {user.avatar_url ? (
+                          <Image
+                            src={user.avatar_url}
+                            alt={user.full_name}
+                            fill
+                            className="object-cover"
+                            sizes="40px"
+                          />
+                        ) : (
+                          <span className="flex h-full w-full items-center justify-center text-sm font-bold text-slate-500 dark:text-slate-300">
+                            {firstChar}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <Link
+                          href={`/users/${user.id}`}
+                          className="line-clamp-1 font-semibold text-slate-900 hover:text-blue-600 hover:underline dark:text-slate-100"
                         >
-                          {r.role_name}
-                        </span>
-                      ))
+                          {user.full_name}
+                        </Link>
+
+                        <p className="mt-0.5 line-clamp-1 text-xs text-slate-500 dark:text-slate-400">
+                          {user.email ?? "Chưa có email"}
+                        </p>
+                      </div>
+                    </div>
+                  </td>
+
+                  {/* Account */}
+                  <td className="px-4 py-3">
+                    <code className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
+                      @{user.username}
+                    </code>
+
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {user.phone ?? "Chưa có SĐT"}
+                    </p>
+                  </td>
+
+                  {/* Roles */}
+                  <td className="px-4 py-3">
+                    {user.roles.length === 0 ? (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
+                        Chưa gán
+                      </span>
+                    ) : (
+                      <div className="flex max-w-[240px] flex-wrap gap-1.5">
+                        {user.roles.slice(0, 2).map((role) => (
+                          <span
+                            key={role.role_id}
+                            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
+                          >
+                            <ShieldCheck className="h-3 w-3" />
+                            {role.role_name}
+                          </span>
+                        ))}
+
+                        {user.roles.length > 2 && (
+                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            +{user.roles.length - 2}
+                          </span>
+                        )}
+                      </div>
                     )}
-                  </div>
-                </td>
-                {/* Status */}
-                <td className="py-3 pr-4">
-                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${status.className}`}>
-                    {status.label}
-                  </span>
-                </td>
-                {/* Last login */}
-                <td className="py-3 pr-4 text-slate-500 dark:text-slate-400">{timeAgo(u.last_login_at)}</td>
-                {/* Created */}
-                <td className="py-3 pr-4 text-slate-500 dark:text-slate-400">{formatDate(u.created_at)}</td>
-                {/* Actions */}
-                <td className="py-3 text-right">
-                  <div className="flex items-center justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button variant="ghost" size="sm" onClick={() => onEdit(u)} title="Chỉnh sửa">
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600"
-                      onClick={() => onDelete(u)}
-                      title="Xóa"
+                  </td>
+
+                  {/* Status */}
+                  <td className="px-4 py-3">
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${status.className}`}
                     >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                      <StatusIcon className="h-3.5 w-3.5" />
+                      {status.label}
+                    </span>
+                  </td>
+
+                  {/* Last login */}
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                    {user.last_login_at
+                      ? timeAgo(user.last_login_at)
+                      : "Chưa đăng nhập"}
+                  </td>
+
+                  {/* Created */}
+                  <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                    {formatDate(user.created_at)}
+                  </td>
+
+                  {/* Actions */}
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(user)}
+                        title="Chỉnh sửa"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                        onClick={() => onDelete(user)}
+                        title="Xóa"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
