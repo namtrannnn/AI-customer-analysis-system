@@ -10,7 +10,6 @@ import {
   Edit3,
   Trash2,
   ShieldCheck,
-  Lock,
   CheckCircle2,
   CircleOff,
 } from "lucide-react";
@@ -20,6 +19,12 @@ interface UserTableProps {
   onEdit: (user: User) => void;
   onDelete: (user: User) => void;
 }
+
+const ROLE_LABEL_MAP: Record<number, string> = {
+  1: "Quản trị viên",
+  2: "Quản lý",
+  3: "Nhân viên",
+};
 
 const statusConfig: Record<
   UserStatus,
@@ -41,9 +46,9 @@ const statusConfig: Record<
     className:
       "bg-slate-100 text-slate-600 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700",
   },
-  locked: {
-    label: "Bị khóa",
-    icon: Lock,
+  deleted: {
+    label: "Đã xóa",
+    icon: CircleOff,
     className:
       "bg-red-50 text-red-700 ring-red-100 dark:bg-red-500/10 dark:text-red-300 dark:ring-red-500/20",
   },
@@ -77,17 +82,19 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
 
           <tbody className="divide-y divide-slate-100 bg-white dark:divide-slate-700 dark:bg-slate-800">
             {users.map((user) => {
-              const status = statusConfig[user.status];
+              const status = statusConfig[user.status] ?? statusConfig.inactive;
               const StatusIcon = status.icon;
+
               const firstChar =
                 user.full_name?.trim()?.charAt(0)?.toUpperCase() || "U";
+
+              const roleIds = user.role_ids ?? [];
 
               return (
                 <tr
                   key={user.id}
                   className="group transition-colors hover:bg-slate-50 dark:hover:bg-slate-700/40"
                 >
-                  {/* User */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-gradient-to-br from-slate-100 to-slate-200 ring-1 ring-slate-200 dark:from-slate-700 dark:to-slate-800 dark:ring-slate-600">
@@ -121,7 +128,6 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                     </div>
                   </td>
 
-                  {/* Account */}
                   <td className="px-4 py-3">
                     <code className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700 dark:bg-slate-700 dark:text-slate-200">
                       @{user.username}
@@ -132,34 +138,32 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                     </p>
                   </td>
 
-                  {/* Roles */}
                   <td className="px-4 py-3">
-                    {user.roles.length === 0 ? (
+                    {roleIds.length === 0 ? (
                       <span className="text-xs text-slate-400 dark:text-slate-500">
                         Chưa gán
                       </span>
                     ) : (
                       <div className="flex max-w-[240px] flex-wrap gap-1.5">
-                        {user.roles.slice(0, 2).map((role) => (
+                        {roleIds.slice(0, 2).map((roleId) => (
                           <span
-                            key={role.role_id}
+                            key={roleId}
                             className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
                           >
                             <ShieldCheck className="h-3 w-3" />
-                            {role.role_name}
+                            {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
                           </span>
                         ))}
 
-                        {user.roles.length > 2 && (
+                        {roleIds.length > 2 && (
                           <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                            +{user.roles.length - 2}
+                            +{roleIds.length - 2}
                           </span>
                         )}
                       </div>
                     )}
                   </td>
 
-                  {/* Status */}
                   <td className="px-4 py-3">
                     <span
                       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${status.className}`}
@@ -169,19 +173,16 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                     </span>
                   </td>
 
-                  {/* Last login */}
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     {user.last_login_at
                       ? timeAgo(user.last_login_at)
                       : "Chưa đăng nhập"}
                   </td>
 
-                  {/* Created */}
                   <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                     {formatDate(user.created_at)}
                   </td>
 
-                  {/* Actions */}
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">
                       <Button

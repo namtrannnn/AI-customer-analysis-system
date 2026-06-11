@@ -21,7 +21,7 @@ import type {
   UserCreatePayload,
   UserUpdatePayload,
   UserFilterParams,
-  UserStatus,
+  UserFilterStatus,
 } from "@/types/user.type";
 import type { PaginatedResponse } from "@/types/customer.type";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -43,6 +43,12 @@ export default function UsersPage() {
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const [createdAccount, setCreatedAccount] = useState<{
+    username: string;
+    temporary_password: string;
+  } | null>(null);
+
   const [toast, setToast] = useState<{
     type: "success" | "error";
     msg: string;
@@ -53,8 +59,13 @@ export default function UsersPage() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
-      const data = await getUsers({ ...filter, search: debouncedSearch });
+      const data = await getUsers({
+        ...filter,
+        search: debouncedSearch,
+      });
+
       setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra");
@@ -73,32 +84,55 @@ export default function UsersPage() {
   }
 
   async function handleCreate(payload: UserCreatePayload, roleIds: number[]) {
-    await createUser({
-      ...payload,
-      role_ids: roleIds,
-    });
+    try {
+      const created = await createUser({
+        ...payload,
+        role_ids: roleIds,
+      });
 
-    showToast("success", "Thêm người dùng thành công");
-    fetchData();
+      setCreatedAccount({
+        username: created.username,
+        temporary_password: created.temporary_password,
+      });
+
+      showToast("success", "Thêm người dùng thành công");
+      setAddOpen(false);
+      fetchData();
+    } catch (e: unknown) {
+      showToast(
+        "error",
+        e instanceof Error ? e.message : "Thêm người dùng thất bại",
+      );
+      throw e;
+    }
   }
 
   async function handleUpdate(payload: UserUpdatePayload, roleIds: number[]) {
     if (!editTarget) return;
 
-    await updateUser(editTarget.id, {
-      ...payload,
-      role_ids: roleIds,
-    });
+    try {
+      await updateUser(editTarget.id, {
+        ...payload,
+        role_ids: roleIds,
+      });
 
-    showToast("success", "Cập nhật thành công");
-    fetchData();
+      showToast("success", "Cập nhật thành công");
+      setEditTarget(null);
+      fetchData();
+    } catch (e: unknown) {
+      showToast("error", e instanceof Error ? e.message : "Cập nhật thất bại");
+      throw e;
+    }
   }
 
   async function handleDelete() {
     if (!deleteTarget) return;
+
     setDeleteLoading(true);
+
     try {
       await deleteUser(deleteTarget.id);
+
       showToast("success", `Đã xóa "${deleteTarget.full_name}"`);
       setDeleteTarget(null);
       fetchData();
@@ -123,6 +157,7 @@ export default function UsersPage() {
             Quản lý tài khoản, vai trò và quyền truy cập của nhân viên.
           </p>
         </div>
+
         <Button
           icon={
             <svg
@@ -145,15 +180,57 @@ export default function UsersPage() {
         </Button>
       </div>
 
-      <div className="rounded-xl bg-white dark:bg-slate-800 shadow-sm dark:shadow-slate-900/50">
+      {createdAccount && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+          <div className="mb-2 flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">Tài khoản vừa tạo</p>
+              <p className="mt-1 text-xs opacity-80">
+                Vui lòng lưu lại mật khẩu tạm thời. Sau khi đóng thông báo này,
+                bạn sẽ không xem lại được mật khẩu.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCreatedAccount(null)}
+              className="rounded-lg px-2 py-1 text-xs font-medium hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
+            >
+              Đóng
+            </button>
+          </div>
+
+          <div className="grid gap-2 rounded-lg bg-white/70 p-3 dark:bg-slate-900/40">
+            <div>
+              <span className="text-xs opacity-70">Tên đăng nhập:</span>{" "}
+              <span className="font-mono font-semibold">
+                {createdAccount.username}
+              </span>
+            </div>
+
+            <div>
+              <span className="text-xs opacity-70">Mật khẩu tạm thời:</span>{" "}
+              <span className="font-mono font-semibold">
+                {createdAccount.temporary_password}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-xl bg-white shadow-sm dark:bg-slate-800 dark:shadow-slate-900/50">
         {/* Filter */}
-        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 dark:border-slate-700 p-4">
+        <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4 dark:border-slate-700">
           <div className="min-w-[220px] flex-1">
             <Input
               placeholder="Tìm theo tên, username, email..."
               value={filter.search ?? ""}
               onChange={(e) =>
-                setFilter((p) => ({ ...p, search: e.target.value, page: 1 }))
+                setFilter((p) => ({
+                  ...p,
+                  search: e.target.value,
+                  page: 1,
+                }))
               }
               leftIcon={
                 <svg
@@ -172,27 +249,27 @@ export default function UsersPage() {
               }
             />
           </div>
+
           <select
             value={filter.status ?? ""}
             onChange={(e) =>
               setFilter((p) => ({
                 ...p,
-                status: e.target.value as UserStatus | "",
+                status: e.target.value as UserFilterStatus,
                 page: 1,
               }))
             }
-            className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 dark:bg-slate-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           >
             <option value="">Tất cả trạng thái</option>
             <option value="active">Hoạt động</option>
             <option value="inactive">Ngừng HĐ</option>
-            <option value="locked">Bị khóa</option>
           </select>
         </div>
 
         {/* Stats */}
         {result && (
-          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 px-4 py-2">
+          <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2 dark:border-slate-700">
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Tổng{" "}
               <span className="font-semibold text-slate-700 dark:text-slate-300">
@@ -200,6 +277,7 @@ export default function UsersPage() {
               </span>{" "}
               người dùng
             </p>
+
             <p className="text-xs text-slate-400 dark:text-slate-500">
               Trang {page}/{totalPages}
             </p>
@@ -228,35 +306,48 @@ export default function UsersPage() {
 
         {/* Pagination */}
         {!loading && !error && totalPages > 1 && (
-          <div className="flex items-center justify-center gap-1 border-t border-slate-100 dark:border-slate-700 px-4 py-3">
+          <div className="flex items-center justify-center gap-1 border-t border-slate-100 px-4 py-3 dark:border-slate-700">
             <button
               onClick={() =>
-                setFilter((p) => ({ ...p, page: (p.page ?? 1) - 1 }))
+                setFilter((p) => ({
+                  ...p,
+                  page: Math.max(1, (p.page ?? 1) - 1),
+                }))
               }
               disabled={page <= 1}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               ← Trước
             </button>
+
             {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
               <button
                 key={p}
-                onClick={() => setFilter((prev) => ({ ...prev, page: p }))}
+                onClick={() =>
+                  setFilter((prev) => ({
+                    ...prev,
+                    page: p,
+                  }))
+                }
                 className={`min-w-[36px] rounded-lg border px-3 py-1.5 text-sm transition ${
                   page === p
                     ? "border-blue-600 bg-blue-600 font-semibold text-white"
-                    : "border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"
+                    : "border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700"
                 }`}
               >
                 {p}
               </button>
             ))}
+
             <button
               onClick={() =>
-                setFilter((p) => ({ ...p, page: (p.page ?? 1) + 1 }))
+                setFilter((p) => ({
+                  ...p,
+                  page: Math.min(totalPages, (p.page ?? 1) + 1),
+                }))
               }
               disabled={page >= totalPages}
-              className="rounded-lg border border-slate-300 dark:border-slate-600 px-3 py-1.5 text-sm text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40"
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700"
             >
               Sau →
             </button>
@@ -269,12 +360,14 @@ export default function UsersPage() {
         onClose={() => setAddOpen(false)}
         onSubmit={handleCreate}
       />
+
       <UserEditModal
         open={!!editTarget}
         onClose={() => setEditTarget(null)}
         user={editTarget}
         onSubmit={handleUpdate}
       />
+
       <UserDeleteModal
         open={!!deleteTarget}
         onClose={() => setDeleteTarget(null)}

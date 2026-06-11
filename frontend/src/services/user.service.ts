@@ -1,201 +1,82 @@
-import { delay } from "./api";
-import { MOCK_USERS, getNextUserId } from "@/mocks/users.mock";
+import { http } from "@/lib/http";
 import type {
   User,
   UserCreatePayload,
+  UserCreateResponse,
   UserUpdatePayload,
   UserFilterParams,
-  UserRole,
 } from "@/types/user.type";
 import type { PaginatedResponse } from "@/types/customer.type";
 
-let users: User[] = [...MOCK_USERS];
-
-const MOCK_ROLE_MAP: Record<number, Omit<UserRole, "id" | "assigned_at">> = {
-  1: {
-    role_id: 1,
-    role_code: "admin",
-    role_name: "Quản trị viên",
-  },
-  2: {
-    role_id: 2,
-    role_code: "manager",
-    role_name: "Quản lý",
-  },
-  3: {
-    role_id: 3,
-    role_code: "staff",
-    role_name: "Nhân viên",
-  },
-};
-
-function buildUserRoles(roleIds: number[] = []): UserRole[] {
-  return roleIds
-    .filter((roleId) => MOCK_ROLE_MAP[roleId])
-    .map((roleId, index) => ({
-      id: Date.now() + index,
-      ...MOCK_ROLE_MAP[roleId],
-      assigned_at: new Date().toISOString(),
-    }));
-}
-
+// ─── List users: search + filter + pagination ────────────────────────────────
 export async function getUsers(
   params: UserFilterParams = {},
 ): Promise<PaginatedResponse<User>> {
-  await delay();
+  const { page = 1, limit = 10, search = "", status = "" } = params;
 
-  const { search = "", status = "", page = 1, limit = 10 } = params;
+  const keyword = search.trim();
+  const skip = (page - 1) * limit;
 
-  let result = [...users];
+  const response = await http.raw.get("/users/", {
+    params: {
+      q: keyword || undefined,
+      status: status || undefined,
+      skip,
+      limit,
+    },
+  });
 
-  if (search.trim()) {
-    const q = search.trim().toLowerCase();
+  const json = response.data;
 
-    result = result.filter(
-      (user) =>
-        user.full_name.toLowerCase().includes(q) ||
-        user.username.toLowerCase().includes(q) ||
-        user.email?.toLowerCase().includes(q) ||
-        user.phone?.toLowerCase().includes(q),
-    );
-  }
-
-  if (status) {
-    result = result.filter((user) => user.status === status);
-  }
-
-  result.sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
-
-  const total = result.length;
-  const total_pages = Math.max(1, Math.ceil(total / limit));
-  const safePage = Math.min(Math.max(page, 1), total_pages);
-
-  const data = result.slice((safePage - 1) * limit, safePage * limit);
+  const data: User[] = Array.isArray(json.data) ? json.data : [];
+  const total = json.total ?? json.meta?.total ?? data.length;
 
   return {
     data,
     total,
-    page: safePage,
+    page,
     limit,
-    total_pages,
+    total_pages: Math.max(1, Math.ceil(total / limit)),
   };
 }
 
+// ─── Get by ID ────────────────────────────────────────────────────────────────
 export async function getUserById(id: number): Promise<User> {
-  await delay();
-
-  const found = users.find((user) => user.id === id);
-
-  if (!found) {
-    throw new Error("Không tìm thấy người dùng");
-  }
-
-  return { ...found };
+  return http.get<User>(`/users/${id}`);
 }
 
-export async function createUser(payload: UserCreatePayload): Promise<User> {
-  await delay();
-
-  const username = payload.username.trim();
-  const email = payload.email?.trim();
-
-  const existsUsername = users.find(
-    (user) => user.username.toLowerCase() === username.toLowerCase(),
-  );
-
-  if (existsUsername) {
-    throw new Error("Tên đăng nhập đã tồn tại");
-  }
-
-  if (email) {
-    const existsEmail = users.find(
-      (user) => user.email?.toLowerCase() === email.toLowerCase(),
-    );
-
-    if (existsEmail) {
-      throw new Error("Email đã tồn tại");
-    }
-  }
-
-  const newId = getNextUserId();
-
-  const newUser: User = {
-    id: newId,
-    full_name: payload.full_name.trim(),
-    username,
-    email: email || null,
-    phone: payload.phone?.trim() || null,
-    status: payload.status ?? "active",
-    avatar_url: `https://api.dicebear.com/7.x/personas/svg?seed=${username}`,
-    last_login_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-    roles: buildUserRoles(payload.role_ids ?? []),
-  };
-
-  users = [newUser, ...users];
-
-  return { ...newUser };
+// ─── Create ───────────────────────────────────────────────────────────────────
+// BE tự sinh username + temporary_password
+export async function createUser(
+  payload: UserCreatePayload,
+): Promise<UserCreateResponse> {
+  return http.post<UserCreateResponse>("/users/", payload);
 }
 
+// ─── Update ───────────────────────────────────────────────────────────────────
 export async function updateUser(
   id: number,
   payload: UserUpdatePayload,
 ): Promise<User> {
-  await delay();
-
-  const idx = users.findIndex((user) => user.id === id);
-
-  if (idx === -1) {
-    throw new Error("Không tìm thấy người dùng");
-  }
-
-  const email = payload.email?.trim();
-
-  if (email) {
-    const existsEmail = users.find(
-      (user) =>
-        user.id !== id && user.email?.toLowerCase() === email.toLowerCase(),
-    );
-
-    if (existsEmail) {
-      throw new Error("Email đã tồn tại");
-    }
-  }
-
-  const updated: User = {
-    ...users[idx],
-    full_name: payload.full_name?.trim() ?? users[idx].full_name,
-    email: email || null,
-    phone: payload.phone?.trim() || null,
-    status: payload.status ?? users[idx].status,
-    roles:
-      payload.role_ids !== undefined
-        ? buildUserRoles(payload.role_ids)
-        : users[idx].roles,
-    updated_at: new Date().toISOString(),
-  };
-
-  users[idx] = updated;
-
-  return { ...updated };
+  return http.patch<User>(`/users/${id}`, payload);
 }
 
-export async function deleteUser(id: number): Promise<void> {
-  await delay();
+// ─── Soft delete ──────────────────────────────────────────────────────────────
+export async function deleteUser(id: number): Promise<null> {
+  return http.delete<null>(`/users/${id}`);
+}
 
-  const idx = users.findIndex((user) => user.id === id);
+// ─── Upload avatar ────────────────────────────────────────────────────────────
+export async function uploadUserAvatar(
+  userId: number,
+  file: File,
+): Promise<User> {
+  const formData = new FormData();
+  formData.append("file", file);
 
-  if (idx === -1) {
-    throw new Error("Không tìm thấy người dùng");
-  }
-
-  users[idx] = {
-    ...users[idx],
-    status: "inactive",
-    updated_at: new Date().toISOString(),
-  };
+  return http.post<User>(`/users/${userId}/avatar`, formData, {
+    headers: {
+      "Content-Type": "multipart/form-data",
+    },
+  });
 }

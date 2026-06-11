@@ -23,7 +23,6 @@ export function UserAddModal({ open, onClose, onSubmit }: UserAddModalProps) {
         mode="create"
         onSubmit={async (payload, roleIds) => {
           await onSubmit(payload as UserCreatePayload, roleIds);
-          onClose();
         }}
         onCancel={onClose}
       />
@@ -58,15 +57,16 @@ export function UserEditModal({
         mode="edit"
         initialValues={{
           full_name: user.full_name,
-          username: user.username,
           email: user.email ?? "",
           phone: user.phone ?? "",
-          status: user.status,
+          status:
+            user.status === "active" || user.status === "inactive"
+              ? user.status
+              : "inactive",
         }}
-        initialRoleIds={user.roles?.map((role) => role.role_id) ?? []}
+        initialRoleIds={user.role_ids ?? []}
         onSubmit={async (payload, roleIds) => {
           await onSubmit(payload as UserUpdatePayload, roleIds);
-          onClose();
         }}
         onCancel={onClose}
       />
@@ -132,7 +132,7 @@ export function UserDeleteModal({
         </p>
 
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          Tài khoản sẽ bị đặt thành "Ngừng hoạt động".
+          Tài khoản sẽ bị xóa mềm khỏi danh sách người dùng.
         </p>
       </div>
     </Modal>
