@@ -29,7 +29,7 @@ class UserCreate(BaseModel):
     def sanitize_full_name(cls, v: str) -> str:
         # Cắt khoảng trắng 2 đầu và giữa các từ, sau đó viết hoa chữ cái đầu (VD: "  nguyễn   văn A " -> "Nguyễn Văn A")
         clean_name = " ".join(v.split()).title()
-        if not re.match(r"^[\p{L}\s]+$", clean_name): # \p{L} hỗ trợ unicode tiếng Việt
+        if not re.match(r"^([^\W\d_]|\s)+$", clean_name): # \p{L} hỗ trợ unicode tiếng Việt
             raise ValueError("Họ tên không được chứa số hoặc ký tự đặc biệt.")
         return clean_name
 
@@ -58,7 +58,7 @@ class UserUpdate(BaseModel):
     def sanitize_full_name(cls, v: str | None) -> str | None:
         if v is None: return v
         clean_name = " ".join(v.split()).title()
-        if not re.match(r"^[\p{L}\s]+$", clean_name):
+        if not re.match(r"^([^\W\d_]|\s)+$", clean_name):
             raise ValueError("Họ tên không được chứa số hoặc ký tự đặc biệt.")
         return clean_name
 
