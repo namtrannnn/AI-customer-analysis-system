@@ -103,6 +103,15 @@ class CustomerUpdate(BaseModel):
         if v and v not in ["male", "female", "other"]:
             raise ValueError("Giới tính chỉ được phép là 'male', 'female', hoặc 'other'.")
         return v
+    
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, v):
+        if v and v != "inactive":
+            raise ValueError(
+                "Trạng thái cập nhật chỉ được là 'inactive'."
+            )
+        return v
 
 class CustomerResponse(CustomerBase):
     id: int
