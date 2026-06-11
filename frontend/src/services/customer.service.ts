@@ -17,12 +17,16 @@ export async function createAnonymousProfile(
 ): Promise<PersonProfile> {
   return http.post<PersonProfile>("/customers/anonymous", payload);
 }
-
-// ─── List with client-side pagination ─────────────────────────────────────────
 export async function getCustomers(
   params: CustomerFilterParams = {},
 ): Promise<PaginatedResponse<Customer>> {
-  const { page = 1, limit = 10, search = "", status = "" } = params;
+  const {
+    page = 1,
+    limit = 10,
+    search = "",
+    status = "",
+    gender = "",
+  } = params;
 
   const keyword = search.trim();
   const skip = (page - 1) * limit;
@@ -31,6 +35,7 @@ export async function getCustomers(
     params: {
       q: keyword || undefined,
       status: status || undefined,
+      gender: gender || undefined,
       skip,
       limit,
     },
@@ -49,7 +54,6 @@ export async function getCustomers(
     total_pages: Math.max(1, Math.ceil(total / limit)),
   };
 }
-
 // ─── Get by ID ────────────────────────────────────────────────────────────────
 export async function getCustomerById(id: number): Promise<Customer> {
   return http.get<Customer>(`/customers/${id}`);

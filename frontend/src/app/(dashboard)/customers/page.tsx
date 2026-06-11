@@ -113,7 +113,7 @@ export default function CustomersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Customer | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const debouncedSearch = useDebounce(filter.search, 400);
+  const debouncedSearch = useDebounce(filter.search, 500);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -121,7 +121,10 @@ export default function CustomersPage() {
 
     try {
       const data = await getCustomers({
-        ...filter,
+        page: filter.page,
+        limit: filter.limit,
+        status: filter.status,
+        gender: filter.gender,
         search: debouncedSearch,
       });
 
@@ -132,7 +135,13 @@ export default function CustomersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, debouncedSearch]);
+  }, [
+    filter.page,
+    filter.limit,
+    filter.status,
+    filter.gender,
+    debouncedSearch,
+  ]);
 
   useEffect(() => {
     fetchData();
