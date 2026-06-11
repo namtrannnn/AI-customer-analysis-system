@@ -50,10 +50,6 @@ class CustomerBase(BaseModel):
             if not re.match(pattern, v):
                 raise ValueError("Số điện thoại không đúng định dạng Việt Nam.")
         return v
-    
-# Schema cho request từ Camera tạo khách ẩn danh
-class AnonymousCreate(BaseModel):
-    confidence_avg: float | None = None
 
 # Schema cho CUS-API-10 (Lịch sử đơn hàng)
 class OrderHistoryResponse(BaseModel):
@@ -90,6 +86,23 @@ class CustomerUpdate(BaseModel):
     note: str | None = None
     status: str | None = None
 
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        if v == "": # Xử lý chuỗi rỗng thành None
+            return None
+        if v is not None:
+            pattern = r"^(0|\+84)[35789][0-9]{8}$"
+            if not re.match(pattern, v):
+                raise ValueError("Số điện thoại không đúng định dạng Việt Nam.")
+        return v
+    
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, v: str | None) -> str | None:
+        if v and v not in ["male", "female", "other"]:
+            raise ValueError("Giới tính chỉ được phép là 'male', 'female', hoặc 'other'.")
+        return v
 
 class CustomerResponse(CustomerBase):
     id: int

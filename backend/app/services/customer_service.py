@@ -147,9 +147,14 @@ def get_list_customers(
     # Khởi tạo câu truy vấn gốc
     query = db.query(Customer)
     
-    # Đắp điều kiện lọc trạng thái (nếu có)
+    # Đắp thêm điều kiện Lọc theo trạng thái 
     if status_param:
-        query = query.filter(Customer.status == status_param)
+        if status_param not in ["active", "inactive"]: 
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Trạng thái lọc không hợp lệ. Chỉ chấp nhận 'hoạt động' hoặc 'ngừng hoạt động'." 
+            )
+        query = query.filter(Customer.status == status_param) 
         
     # Đắp điều kiện lọc giới tính (nếu có)
     if gender_param:
@@ -275,11 +280,18 @@ def update_customer(db: Session, customer_id: int, payload: CustomerUpdate) -> C
 
 # CUS-API-05: API xóa mềm khách hàng
 def soft_delete_customer(db: Session, customer_id: int) -> dict:
-    customer = db.query(Customer).filter(Customer.id == customer_id, Customer.status != "inactive").first()
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    
     if not customer:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy khách hàng với ID {customer_id}"
+            detail=f"Không tìm thấy khách hàng với ID {customer_id}."
+        )
+        
+    if customer.status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Không thể khóa. Khách hàng này đã ở trạng thái ngừng hoạt động."
         )
         
     # Thay đổi trạng thái thành 'inactive' thay vì xóa vật lý khỏi database
@@ -293,15 +305,18 @@ MAX_FILE_SIZE = 3 * 1024 * 1024
 
 def upload_customer_avatar(db: Session, customer_id: int, file: UploadFile) -> Customer:
     # 1. Kiểm tra khách hàng
-    customer = db.query(Customer).filter(
-        Customer.id == customer_id, 
-        Customer.status != "inactive"
-    ).first()
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
     
     if not customer:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Không tìm thấy khách hàng với ID {customer_id}"
+            detail=f"Không tìm thấy khách hàng với ID {customer_id}."
+        )
+        
+    if customer.status == "inactive":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Không thể lưu ảnh. Khách hàng này đã bị ngừng hoạt động."
         )
     
     # 2. Validate định dạng và dung lượng
@@ -356,6 +371,12 @@ def upload_customer_avatar(db: Session, customer_id: int, file: UploadFile) -> C
     
 # CUS-API-09: API lấy lịch sử ghé của khách
 def get_customer_visit_history(db: Session, customer_id: int, skip: int = 0, limit: int = 100):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy khách hàng với ID {customer_id}."
+        )
     # Join qua bảng customer_identities để tìm các phiên ghé thăm của khách hàng này
     visits = db.query(VisitSession).join(
         CustomerIdentity, 
@@ -368,6 +389,12 @@ def get_customer_visit_history(db: Session, customer_id: int, skip: int = 0, lim
 
 # CUS-API-10: API lấy lịch sử mua hàng của khách
 def get_customer_order_history(db: Session, customer_id: int, skip: int = 0, limit: int = 100):
+    customer = db.query(Customer).filter(Customer.id == customer_id).first()
+    if not customer:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy khách hàng với ID {customer_id}."
+        )
     # Truy vấn trực tiếp bảng orders bằng customer_id
     orders = db.query(Order).filter(
         Order.customer_id == customer_id
