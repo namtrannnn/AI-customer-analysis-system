@@ -11,6 +11,7 @@ from app.schemas.user_schema import UserCreate, UserUpdate
 from app.core.security import get_password_hash
 from app.models.user_role import UserRole
 from app.utils.helpers import generate_corporate_username, generate_random_password
+from app.models.role import Role
 
 # CUS-API-1: API thêm user (Luồng cấp phát tự động)
 def create_user(db: Session, payload: UserCreate) -> dict:
@@ -30,6 +31,14 @@ def create_user(db: Session, payload: UserCreate) -> dict:
 
     user_data = payload.model_dump(exclude={"role_ids"})
     role_ids_from_ui = payload.role_ids
+
+    if role_ids_from_ui:
+        valid_roles_count = db.query(Role).filter(Role.id.in_(role_ids_from_ui)).count()
+        if valid_roles_count != len(role_ids_from_ui):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail="Một hoặc nhiều Vai trò (Role) không tồn tại trong hệ thống. Vui lòng tải lại trang."
+            )
     
     try:
         # 1. Tạo User
@@ -189,6 +198,14 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
         if "role_ids" in update_data:
             # Cắt danh sách role_ids ra khỏi update_data để không bị lỗi gán vào bảng User
             new_role_ids = update_data.pop("role_ids")
+
+            if new_role_ids:
+                valid_roles_count = db.query(Role).filter(Role.id.in_(new_role_ids)).count()
+                if valid_roles_count != len(new_role_ids):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST, 
+                        detail="Vai trò (Role) được chọn không tồn tại."
+                    )
             
             # Xóa toàn bộ Role cũ của user này trong bảng phân quyền
             db.query(UserRole).filter(UserRole.user_id == user_id).delete()

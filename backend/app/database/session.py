@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 # Nạp các biến môi trường từ file .env vào hệ thống
 load_dotenv()
 
-# Lấy chuỗi kết nối từ file .env, nếu không tìm thấy sẽ dùng chuỗi dự phòng
+# Lấy chuỗi kết nối từ file .env
 DATABASE_URL = os.environ["DATABASE_URL"]
 
 # Khởi tạo Engine quản lý kết nối
