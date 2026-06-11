@@ -55,7 +55,7 @@ class Customer(Base):
         index=True,
     )
 
-    total_visits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    total_visits: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     total_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

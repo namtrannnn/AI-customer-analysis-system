@@ -19,6 +19,7 @@ app = FastAPI(
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://14.225.254.86:3010",
 ]
 
 app.add_middleware(
@@ -30,7 +31,7 @@ app.add_middleware(
 )
 
 app.include_router(customer_router.router)
-# app.include_router(user_router.router)
+app.include_router(user_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)
