@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import { login } from "@/services/auth.service";
 import { validateLogin } from "@/validations/auth.schema";
 import type { LoginErrors } from "@/validations/auth.schema";
-import { useSearchParams } from "next/navigation";
-export default function LoginPage() {
+
+function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reason = searchParams.get("reason");
@@ -30,6 +30,7 @@ export default function LoginPage() {
     e.preventDefault();
 
     const errs = validateLogin(values);
+
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
@@ -59,7 +60,6 @@ export default function LoginPage() {
       style={{ background: "var(--bg-page)" }}
     >
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-blue-600">AI Customer</h1>
           <p className="mt-1 text-sm text-slate-500">
@@ -67,7 +67,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Card */}
         <div
           className="rounded-2xl p-8 shadow-xl"
           style={{
@@ -105,11 +104,13 @@ export default function LoginPage() {
               required
               autoComplete="current-password"
             />
+
             {reason === "unauthorized" && (
               <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
                 Bạn cần đăng nhập để truy cập trang này.
               </div>
             )}
+
             {apiError && (
               <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-600">
                 {apiError}
@@ -125,7 +126,6 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          {/* Demo hint */}
           <div
             className="mt-5 rounded-xl px-3 py-3"
             style={{
@@ -139,6 +139,7 @@ export default function LoginPage() {
             >
               Tài khoản demo:
             </p>
+
             {[
               { username: "admin", label: "Quản trị viên" },
               { username: "manager01", label: "Quản lý" },
@@ -160,6 +161,7 @@ export default function LoginPage() {
                 {acc.username} — {acc.label}
               </button>
             ))}
+
             <p className="mt-1 text-xs text-slate-400">
               Dùng tài khoản do Admin cấp từ backend
             </p>
@@ -167,5 +169,22 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="flex min-h-screen items-center justify-center px-4"
+          style={{ background: "var(--bg-page)" }}
+        >
+          <p className="text-sm text-slate-500">Đang tải đăng nhập...</p>
+        </div>
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }
