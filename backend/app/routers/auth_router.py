@@ -37,10 +37,14 @@ def change_password(
 def admin_reset_password(
     target_user_id: int, 
     db: Session = Depends(get_db),
-    admin_user = Depends(get_admin_user) 
+    admin_user = Depends(get_admin_user)
 ):
     """API Admin khởi tạo lại mật khẩu cho nhân viên."""
-    new_password = services.admin_reset_user_password(db=db, target_user_id=target_user_id)
+    new_password = services.admin_reset_user_password(
+        db=db, 
+        target_user_id=target_user_id,
+        admin_id=admin_user.id 
+    )
     
     return success_response(
         data={"new_temporary_password": new_password},
@@ -50,6 +54,5 @@ def admin_reset_password(
 # AUTH-API-04: Đăng xuất (Logout)
 @router.post("/logout", response_model=StandardResponse)
 def logout(current_user = Depends(get_current_user)):
-    """API Đăng xuất"""
     # Xử lý đăng xuất
     return success_response(data=None, message="Đăng xuất thành công.")

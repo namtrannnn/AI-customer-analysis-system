@@ -80,20 +80,30 @@ def change_user_password(db: Session, user_id: int, payload: ChangePasswordReque
     return {"message": "Đổi mật khẩu thành công."}
 
 # AUTH-API-03: Admin cấp lại mật khẩu (Reset Password)
-def admin_reset_user_password(db: Session, target_user_id: int) -> str:
-    # Bỏ qua những user đã bị xóa mềm (deleted)
+def admin_reset_user_password(db: Session, target_user_id: int, admin_id: int) -> str:
+    # 1. BẢO MẬT: Chặn Admin tự cấp lại mật khẩu cho chính mình
+    if admin_id == target_user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bạn không thể tự cấp lại mật khẩu cho chính mình. Vui lòng sử dụng tính năng Đổi mật khẩu cá nhân."
+        )
+
+    # 2. Bỏ qua những user đã bị xóa mềm (deleted)
     user = db.query(User).filter(User.id == target_user_id, User.status != "deleted").first()
     
     if not user:
-        raise HTTPException(status_code=404, detail="Không tìm thấy người dùng.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="Không tìm thấy người dùng."
+        )
         
-    # 1. Sinh mật khẩu ngẫu nhiên độ bảo mật cao (Ví dụ: xT8#mP2!qL)
+    # 3. Sinh mật khẩu ngẫu nhiên độ bảo mật cao (Ví dụ: xT8#mP2!qL)
     new_plain_password = generate_random_password(length=10)
     
-    # 2. Băm mật khẩu và lưu vào DB
+    # 4. Băm mật khẩu và lưu vào DB
     user.password_hash = get_password_hash(new_plain_password)
     
-    # 3. Trả last_login_at về None để bắt người dùng phải đổi mật khẩu ngay khi đăng nhập lại
+    # 5. Trả last_login_at về None để bắt người dùng phải đổi mật khẩu ngay khi đăng nhập lại
     user.last_login_at = None 
     user.updated_at = func.now()
     

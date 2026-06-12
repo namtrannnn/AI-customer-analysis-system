@@ -29,15 +29,15 @@ def create_user(db: Session, payload: UserCreate) -> dict:
     # Chỉ lấy chuỗi hash để lưu DB 
     hashed_password = get_password_hash(plain_password)
 
-    user_data = payload.model_dump(exclude={"role_ids"})
-    role_ids_from_ui = payload.role_ids
+    user_data = payload.model_dump(exclude={"role_id"})
+    role_id_from_ui = payload.role_id
 
-    if role_ids_from_ui:
-        valid_roles_count = db.query(Role).filter(Role.id.in_(role_ids_from_ui)).count()
-        if valid_roles_count != len(role_ids_from_ui):
+    if role_id_from_ui:
+        role_exists = db.query(Role).filter(Role.id == role_id_from_ui).first()
+        if not role_exists:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Một hoặc nhiều Vai trò (Role) không tồn tại trong hệ thống. Vui lòng tải lại trang."
+                detail="Vai trò (Role) không tồn tại trong hệ thống. Vui lòng tải lại trang."
             )
     
     try:
@@ -50,19 +50,19 @@ def create_user(db: Session, payload: UserCreate) -> dict:
         )
         db.add(new_user)
         
-        # 2. Đẩy tạm xuống DB để lấy ID (nếu có lỗi khóa ngoại sẽ bị bắt ngay)
+        # 2. Đẩy tạm xuống DB để lấy ID
         db.flush() 
 
-        # 3. Duyệt vòng lặp để gán nhiều Role
-        for r_id in role_ids_from_ui:
-            new_user_role = UserRole(user_id=new_user.id, role_id=r_id)
+        # 3. Gán đúng 1 Role vào bảng trung gian
+        if role_id_from_ui:
+            new_user_role = UserRole(user_id=new_user.id, role_id=role_id_from_ui)
             db.add(new_user_role)
 
         # 4. Chốt transaction
         db.commit()
         db.refresh(new_user)
 
-        new_user.role_ids = role_ids_from_ui
+        new_user.role_id = role_id_from_ui
         
         return {
             "user": new_user,
@@ -83,7 +83,7 @@ def get_list_users(
     skip: int = 0, 
     limit: int = 100
 ) -> list[User]:
-    # 1. Khởi tạo câu truy vấn gốc, LOẠI TRỪ NGAY các user đã bị deleted
+    # 1. Khởi tạo câu truy vấn gốc
     query = db.query(User).filter(User.status != "deleted")
     
     # Đắp thêm điều kiện Lọc theo trạng thái 
@@ -95,7 +95,7 @@ def get_list_users(
             )
         query = query.filter(User.status == status_param) 
         
-    # Đắp thêm điều kiện Tìm kiếm không phân biệt hoa thường 
+    # Đắp thêm điều kiện Tìm kiếm
     if search_query:
         search_pattern = f"%{search_query}%"
         query = query.filter(
@@ -107,14 +107,11 @@ def get_list_users(
             )
         )
         
-    # Thực thi truy vấn với phân trang (Mới nhất lên đầu)
     users = query.order_by(User.id.desc()).offset(skip).limit(limit).all()
     
-    # Lặp qua từng user để gắn thêm role_id
     for user in users:
-        # Lấy tất cả role trả về dạng mảng như logic đã update
-        user_roles = db.query(UserRole).filter(UserRole.user_id == user.id).all()
-        user.role_ids = [role.role_id for role in user_roles]
+        user_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
+        user.role_id = user_role.role_id if user_role else None
         
     return users
 
@@ -124,8 +121,6 @@ def count_list_users(
     search_query: str | None = None, 
     status_param: str | None = None
 ) -> int:
-    """Đếm tổng số lượng người dùng khớp điều kiện để xử lý phân trang chính xác"""
-    # LOẠI TRỪ các user đã bị deleted ra khỏi kết quả đếm tổng
     query = db.query(User).filter(User.status != "deleted")
     
     if status_param:
@@ -146,7 +141,6 @@ def count_list_users(
 
 # CUS-API-3: API xem chi tiết user
 def get_user_by_id(db: Session, user_id: int):
-    # Thêm điều kiện chặn xem chi tiết user đã deleted
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first()
     if not user:
         raise HTTPException(
@@ -154,17 +148,14 @@ def get_user_by_id(db: Session, user_id: int):
             detail=f"Không tìm thấy hoặc người dùng với ID {user_id} đã bị xóa."
         )
         
-    # Lấy TẤT CẢ record trong bảng phân quyền
-    user_roles = db.query(UserRole).filter(UserRole.user_id == user.id).all()
-    
-    # Trích xuất ra thành mảng (List Comprehension) [1, 2, 3]
-    user.role_ids = [role.role_id for role in user_roles]
+    # Lấy 1 record phân quyền duy nhất
+    user_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
+    user.role_id = user_role.role_id if user_role else None
     
     return user
 
 # CUS-API-7: API cập nhật thông tin user
 def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
-    # 1. Kiểm tra sự tồn tại của user (bỏ qua những tài khoản đã bị xóa mềm)
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first() 
     if not user:
         raise HTTPException(
@@ -172,63 +163,49 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
             detail=f"Không tìm thấy người dùng hoạt động với ID {user_id}" 
         )
     
-    # Loại bỏ các trường không được gửi lên từ Frontend
     update_data = payload.model_dump(exclude_unset=True)
     
-    # 2. Kiểm tra trùng lặp email duy nhất (nếu có yêu cầu đổi email)
     if "email" in update_data and update_data["email"]:
         email_exists = db.query(User).filter(User.email == update_data["email"], User.id != user_id).first() 
         if email_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email này đã được đăng ký bởi người dùng khác." 
-            )
+            raise HTTPException(status_code=400, detail="Email này đã được đăng ký bởi người dùng khác.")
 
-    # 3. Kiểm tra trùng lặp số điện thoại (nếu có yêu cầu đổi SĐT)
     if "phone" in update_data and update_data["phone"]:
         phone_exists = db.query(User).filter(User.phone == update_data["phone"], User.id != user_id).first() 
         if phone_exists:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Số điện thoại này đã được đăng ký bởi người dùng khác." 
-            )
+            raise HTTPException(status_code=400, detail="Số điện thoại này đã được đăng ký bởi người dùng khác.")
 
     try:
-        # 4. XỬ LÝ CẬP NHẬT NHIỀU ROLE CÙNG LÚC
-        if "role_ids" in update_data:
-            # Cắt danh sách role_ids ra khỏi update_data để không bị lỗi gán vào bảng User
-            new_role_ids = update_data.pop("role_ids")
+        if "role_id" in update_data:
+            new_role_id = update_data.pop("role_id")
 
-            if new_role_ids:
-                valid_roles_count = db.query(Role).filter(Role.id.in_(new_role_ids)).count()
-                if valid_roles_count != len(new_role_ids):
+            if new_role_id:
+                role_exists = db.query(Role).filter(Role.id == new_role_id).first()
+                if not role_exists:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST, 
                         detail="Vai trò (Role) được chọn không tồn tại."
                     )
             
-            # Xóa toàn bộ Role cũ của user này trong bảng phân quyền
+            # Xóa Role cũ trong bảng phân quyền
             db.query(UserRole).filter(UserRole.user_id == user_id).delete()
             
-            # Quét mảng mới và Insert lại toàn bộ vào DB
-            for r_id in new_role_ids:
-                new_user_role = UserRole(user_id=user_id, role_id=r_id)
-                db.add(new_user_role)
+            # Insert 1 Role mới
+            if new_role_id:
+                db.add(UserRole(user_id=user_id, role_id=new_role_id))
                 
-        # 5. CẬP NHẬT CÁC TRƯỜNG THÔNG TIN CÒN LẠI
+        # CẬP NHẬT CÁC TRƯỜNG THÔNG TIN CÒN LẠI
         for key, value in update_data.items():
             setattr(user, key, value)
             
-        # Tự động cập nhật thời gian sửa đổi
         user.updated_at = func.now() 
         
-        # Chốt transaction lưu vào Database
         db.commit()
         db.refresh(user)
         
-        # 6. Lấy lại danh sách Role mới nhất từ DB để gán vào biến động trả về Frontend
-        current_roles = db.query(UserRole).filter(UserRole.user_id == user_id).all()
-        user.role_ids = [role.role_id for role in current_roles]
+        # Gắn role_id vào biến động để trả về
+        current_role = db.query(UserRole).filter(UserRole.user_id == user_id).first()
+        user.role_id = current_role.role_id if current_role else None
         
         return user
         
@@ -236,7 +213,7 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Dữ liệu cập nhật vi phạm ràng buộc hệ thống (Ví dụ: ID vai trò không tồn tại)."
+            detail="Dữ liệu cập nhật vi phạm ràng buộc hệ thống."
         )
     except Exception as e:
         db.rollback()
@@ -247,7 +224,14 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
 
 
 # CUS-API-5: API xóa mềm user 
-def soft_delete_user(db: Session, user_id: int) -> dict:
+def soft_delete_user(db: Session, user_id: int, admin_id: int) -> dict:
+    # Chặn Admin tự xóa mình 
+    if admin_id == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bạn không thể tự xóa tài khoản của chính mình."
+        )
+    
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first()
     if not user:
         raise HTTPException(
@@ -255,7 +239,6 @@ def soft_delete_user(db: Session, user_id: int) -> dict:
             detail=f"Không tìm thấy hoặc người dùng với ID {user_id} đã bị xóa trước đó." 
         )
         
-    # Chuyển trạng thái sang deleted thay vì xóa vật lý khỏi hệ thống
     user.status = "deleted" 
     user.updated_at = func.now()
     db.commit()
@@ -263,10 +246,9 @@ def soft_delete_user(db: Session, user_id: int) -> dict:
 
 
 # CUS-API-8: API upload/lưu ảnh user
-MAX_FILE_SIZE = 3 * 1024 * 1024  # Giới hạn dung lượng file ảnh (3MB)
+MAX_FILE_SIZE = 3 * 1024 * 1024  
 
 def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:
-    # 1. Kiểm tra sự tồn tại của người dùng
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first()
     if not user:
         raise HTTPException(
@@ -274,7 +256,6 @@ def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:
             detail=f"Không tìm thấy người dùng với ID {user_id}" 
         )
     
-    # Kiểm tra định dạng hình ảnh và kích thước file tải lên
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File tải lên bắt buộc phải là định dạng hình ảnh.")
 
@@ -283,15 +264,13 @@ def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:
         raise HTTPException(status_code=400, detail="Dung lượng ảnh vượt quá giới hạn cho phép (3MB).")
 
     try:
-        # Dọn dẹp tệp tin ảnh cũ trên Cloud Storage (nếu có) nhằm tối ưu không gian lưu trữ
         if user.avatar_url: 
             try:
                 old_file_path = user.avatar_url.split("/public/avatars/")[-1] 
                 supabase.storage.from_("avatars").remove([old_file_path])
             except Exception as delete_error:
-                print(f"[Warning] Không thể dọn dẹp ảnh cũ trên Supabase Storage: {delete_error}")
+                pass
 
-        # Upload ảnh đại diện mới lên Supabase Storage
         file_extension = file.filename.split(".")[-1]
         file_path = f"users/avatar_{user_id}_{int(time.time())}.{file_extension}"
         
@@ -301,7 +280,6 @@ def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:
             file_options={"content-type": file.content_type}
         )
         
-        # Lấy Public URL và đồng bộ vào DB
         public_url = supabase.storage.from_("avatars").get_public_url(file_path)
         user.avatar_url = public_url 
         user.updated_at = func.now() 
@@ -309,8 +287,9 @@ def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:
         db.commit()
         db.refresh(user)
 
-        current_roles = db.query(UserRole).filter(UserRole.user_id == user_id).all()
-        user.role_ids = [role.role_id for role in current_roles]
+        # Lấy 1 role duy nhất
+        current_role = db.query(UserRole).filter(UserRole.user_id == user_id).first()
+        user.role_id = current_role.role_id if current_role else None
 
         return user
         
