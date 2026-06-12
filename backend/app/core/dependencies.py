@@ -7,6 +7,8 @@ from app.database.session import get_db
 from app.models.user import User
 from app.core.security import SECRET_KEY, ALGORITHM
 from app.models.user_role import UserRole
+from app.models.permission import Permission
+from app.models.role_permission import RolePermission
 
 # Khai báo chuẩn OAuth2 của FastAPI. 
 # tokenUrl là đường dẫn API dùng để lấy token (giúp Swagger UI tự động hiện nút Authorize)
@@ -73,3 +75,37 @@ def get_admin_user(
         )
         
     return current_user
+
+class RequirePermission:
+    """
+    Dependency dùng để kiểm tra xem User hiện tại có sở hữu một Quyền cụ thể hay không.
+    Sử dụng: Depends(RequirePermission("CUSTOMER_CREATE"))
+    """
+    def __init__(self, required_permission: str):
+        self.required_permission = required_permission
+
+    def __call__(self, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+        # 1. Kiểm tra xem user có được gán nhóm quyền nào chưa
+        if not current_user.role_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tài khoản của bạn chưa được phân quyền để sử dụng hệ thống."
+            )
+
+        # 2. Truy vấn Database (JOIN 2 bảng) để dò xem Role của User có chứa mã Quyền này không
+        has_permission = db.query(RolePermission).join(
+            Permission, RolePermission.permission_id == Permission.id
+        ).filter(
+            RolePermission.role_id == current_user.role_id,
+            Permission.permission_code == self.required_permission
+        ).first()
+
+        # 3. Chặn đứng và ném lỗi 403 nếu không tìm thấy quyền
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Truy cập bị từ chối! Bạn không có quyền thực hiện hành động này. (Mã quyền yêu cầu: {self.required_permission})"
+            )
+
+        # 4. Nếu hợp lệ, cho phép đi tiếp và trả về thông tin user
+        return current_user

@@ -10,7 +10,7 @@ from app.schemas.role_schema import RoleCreate, RoleUpdate
 from app.models.user_role import UserRole
 from app.models.user import User
 
-# CUS-API-1: Thêm nhóm quyền
+# Thêm nhóm quyền
 def create_role_with_permissions(db: Session, payload: RoleCreate) -> dict:
     # 1. Kiểm tra trùng lặp mã nhóm quyền
     existing_role = db.query(Role).filter(Role.role_code == payload.role_code).first()
@@ -68,7 +68,7 @@ def create_role_with_permissions(db: Session, payload: RoleCreate) -> dict:
             detail="Lỗi ràng buộc dữ liệu khi lưu nhóm quyền."
         )
     
-# CUS-API-2 & 6: Xem danh sách và Tìm kiếm nhóm quyền
+# Xem danh sách và Tìm kiếm nhóm quyền
 def get_roles_full_details_list(
     db: Session, 
     search_query: str | None = None, 
@@ -125,7 +125,7 @@ def count_list_roles(db: Session, search_query: str | None = None) -> int:
         )
     return query.count()
 
-# CUS-API-3: Xem chi tiết nhóm quyền
+# Xem chi tiết nhóm quyền
 def get_role_by_id(db: Session, role_id: int) -> Role:
     role = db.query(Role).filter(Role.id == role_id).first()
     if not role:
@@ -136,7 +136,7 @@ def get_role_by_id(db: Session, role_id: int) -> Role:
     
     return role
 
-# CUS-API-4: Cập nhật thông tin nhóm quyền
+# Cập nhật thông tin nhóm quyền
 def update_role(db: Session, role_id: int, payload: RoleUpdate) -> Role:
     role = db.query(Role).filter(Role.id == role_id).first()
     if not role:
@@ -185,7 +185,7 @@ def update_role(db: Session, role_id: int, payload: RoleUpdate) -> Role:
         db.rollback()
         raise HTTPException(status_code=400, detail="Lỗi ràng buộc hệ thống khi cập nhật nhóm quyền.")
 
-# CUS-API-5: Xóa nhóm quyền
+# Xóa nhóm quyền
 def delete_role(db: Session, role_id: int) -> dict:
     role = db.query(Role).filter(Role.id == role_id).first()
     if not role:

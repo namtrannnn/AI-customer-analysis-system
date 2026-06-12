@@ -7,19 +7,19 @@ from app.schemas.response_schema import StandardResponse
 from app.services import user_service as services
 from app.database.session import get_db 
 from app.utils.response import success_response
-from app.core.dependencies import get_admin_user, get_current_user
+from app.core.dependencies import RequirePermission
 
 router = APIRouter(
     prefix="/api/users", 
     tags=["Users"]
 )
 
-# CUS-API-01: API thêm user
+# API thêm user
 @router.post("/", response_model=StandardResponse[schemas.UserCreateResponse], status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: schemas.UserCreate, 
     db: Session = Depends(get_db),
-    admin_user = Depends(get_admin_user) # BẢO MẬT: Chỉ Admin mới được tạo nhân sự
+    current_user = Depends(RequirePermission("user.create")) # BẢO MẬT: Chỉ Admin mới được tạo nhân sự
 ):
     
     result = services.create_user(db=db, payload=payload)
@@ -37,7 +37,7 @@ def create_user(
         message="Tạo người dùng mới thành công. Vui lòng lưu lại Tên đăng nhập và Mật khẩu."
     )
 
-# CUS-API-02-06-07: API xem danh sách user Tìm kiếm và Lọc User
+# API xem danh sách user Tìm kiếm và Lọc User
 @router.get("/", response_model=StandardResponse[list[schemas.UserResponse]])
 def get_users(
     q: str | None = Query(default=None, description="Từ khóa tìm kiếm theo tên, username, sđt hoặc email"),
@@ -45,7 +45,7 @@ def get_users(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user) # BẢO MẬT: Bắt buộc đăng nhập
+    current_user = Depends(RequirePermission("user.view")) 
 ):
     users = services.get_list_users(
         db=db, 
@@ -69,24 +69,24 @@ def get_users(
         limit=limit
     )
 
-# CUS-API-03: API xem chi tiết user
+# API xem chi tiết user
 @router.get("/{user_id}", response_model=StandardResponse[schemas.UserResponse])
 def get_user(
     user_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user) # BẢO MẬT
+    current_user = Depends(RequirePermission("user.view"))
 ):
     user = services.get_user_by_id(db=db, user_id=user_id)
     return success_response(data=user, message="Lấy chi tiết người dùng thành công")
 
 
-# CUS-API-4: API cập nhật thông tin user
+# API cập nhật thông tin user
 @router.patch("/{user_id}", response_model=StandardResponse[schemas.UserResponse])
 def update_user(
     user_id: int, 
     payload: schemas.UserUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user) # BẢO MẬT
+    current_user = Depends(RequirePermission("user.update"))
 ):
     updated_user = services.update_user(db=db, user_id=user_id, payload=payload)
     return success_response(
@@ -94,28 +94,28 @@ def update_user(
         message="Cập nhật thông tin người dùng thành công"
     )
 
-# CUS-API-5: API xóa mềm user
+# API xóa mềm user
 @router.delete("/{user_id}", response_model=StandardResponse[Any], status_code=status.HTTP_200_OK)
 def delete_user(
     user_id: int, 
-    db: Session = Depends(get_db),
-    admin_user = Depends(get_admin_user) 
+    db: Session = Depends(get_db), 
+    current_user = Depends(RequirePermission("user.delete"))
 ):
     """API xóa mềm người dùng (Yêu cầu quyền Admin)"""
   
-    services.soft_delete_user(db=db, user_id=user_id, admin_id=admin_user.id)
+    services.soft_delete_user(db=db, user_id=user_id, admin_id=current_user.id)
     return success_response(
         data=None, 
         message="Xóa người dùng thành công"
     )
 
-# CUS-API-8: API upload/lưu ảnh user
+# API upload/lưu ảnh user
 @router.post("/{user_id}/avatar", response_model=StandardResponse[schemas.UserResponse])
 def upload_avatar(
     user_id: int, 
     file: UploadFile = File(...), 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user) # BẢO MẬT
+    current_user = Depends(RequirePermission("user.update")) # BẢO MẬT
 ):
     """API tải lên và cập nhật ảnh đại diện của người dùng (tối đa 3MB)"""
     user = services.upload_user_avatar(db=db, user_id=user_id, file=file)

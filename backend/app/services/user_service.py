@@ -13,7 +13,7 @@ from app.models.user_role import UserRole
 from app.utils.helpers import generate_corporate_username, generate_random_password
 from app.models.role import Role
 
-# CUS-API-1: API thêm user (Luồng cấp phát tự động)
+# API thêm user (Luồng cấp phát tự động)
 def create_user(db: Session, payload: UserCreate) -> dict:
     # Kiểm tra dữ liệu trùng lặp
     if payload.email and db.query(User).filter(User.email == payload.email).first():
@@ -75,7 +75,7 @@ def create_user(db: Session, payload: UserCreate) -> dict:
             detail="Lỗi dữ liệu. Vui lòng kiểm tra lại."
         )
     
-# CUS-API-2 - 6 - 7: Gộp Xem danh sách, Tìm kiếm và Lọc trạng thái 
+# Xem danh sách, Tìm kiếm và Lọc trạng thái 
 def get_list_users(
     db: Session, 
     search_query: str | None = None, 
@@ -139,7 +139,7 @@ def count_list_users(
         
     return query.count()
 
-# CUS-API-3: API xem chi tiết user
+# API xem chi tiết user
 def get_user_by_id(db: Session, user_id: int):
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first()
     if not user:
@@ -154,7 +154,7 @@ def get_user_by_id(db: Session, user_id: int):
     
     return user
 
-# CUS-API-7: API cập nhật thông tin user
+# API cập nhật thông tin user
 def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
     user = db.query(User).filter(User.id == user_id, User.status != "deleted").first() 
     if not user:
@@ -223,7 +223,7 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
         )
 
 
-# CUS-API-5: API xóa mềm user 
+# API xóa mềm user 
 def soft_delete_user(db: Session, user_id: int, admin_id: int) -> dict:
     # Chặn Admin tự xóa mình 
     if admin_id == user_id:
@@ -245,7 +245,7 @@ def soft_delete_user(db: Session, user_id: int, admin_id: int) -> dict:
     return {"message": "Xóa mềm tài khoản người dùng thành công."}
 
 
-# CUS-API-8: API upload/lưu ảnh user
+# API upload/lưu ảnh user
 MAX_FILE_SIZE = 3 * 1024 * 1024  
 
 def upload_user_avatar(db: Session, user_id: int, file: UploadFile) -> User:

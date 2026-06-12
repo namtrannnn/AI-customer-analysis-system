@@ -38,5 +38,3 @@ class Role(Base):
         nullable=False, 
         server_default=func.now()
     )
-
-   
