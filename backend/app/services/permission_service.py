@@ -58,7 +58,7 @@ def get_permission_matrix(db: Session) -> dict:
     role_permissions = db.query(RolePermission).all()
     role_perm_map = defaultdict(list)
     for rp in role_permissions:
-        role_perm_map[rp.role_id].append(rp.permission_id)
+        role_perm_map[str(rp.role_id)].append(rp.permission_id)
 
     return {
         "roles": roles_data,
