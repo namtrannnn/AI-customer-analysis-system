@@ -16,7 +16,7 @@ class UserLoginInfo(BaseModel):
     phone: str | None
     avatar_url: str | None
     status: str
-    role_ids: list[int]  # Danh sách vai trò để Frontend phân quyền UI
+    role_id: int  # Danh sách vai trò để Frontend phân quyền UI
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime | None

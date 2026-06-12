@@ -38,3 +38,9 @@ class Role(Base):
         nullable=False, 
         server_default=func.now()
     )
+
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime, 
+        onupdate=func.now(), 
+        nullable=True
+    )
