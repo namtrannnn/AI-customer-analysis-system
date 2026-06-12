@@ -8,8 +8,7 @@ class UserCreate(BaseModel):
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=20)
     avatar_url: str | None = None
-    # Hứng role_id từ giao diện
-    role_ids: list[int] = Field(..., description="Danh sách ID các vai trò")
+    role_id: int = Field(..., description="ID vai trò của người dùng")
 
     @field_validator("phone")
     @classmethod
@@ -40,7 +39,7 @@ class UserUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=20)
     avatar_url: str | None = None
     status: str | None = Field(default=None, description="Trạng thái người dùng")
-    role_ids: list[int] | None = Field(default=None, description="Danh sách ID vai trò mới")
+    role_id: int = Field(..., description="ID vai trò mới của người dùng")
 
     @field_validator("phone")
     @classmethod
@@ -78,7 +77,7 @@ class UserResponse(BaseModel):
     phone: str | None
     avatar_url: str | None
     status: str
-    role_ids: list[int] = []
+    role_id: int
     
     last_login_at: datetime | None = None
     created_at: datetime
