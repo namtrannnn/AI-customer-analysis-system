@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-
+import { getToken } from "@/utils/storage";
 const BASE_URL =
   // process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:8000/api";
@@ -19,9 +19,20 @@ function getErrorMessage(error: unknown): string {
   const axiosError = error as AxiosError<{
     message?: string;
     detail?: string | Array<{ msg?: string; loc?: unknown[] }>;
+    details?: Array<{ msg?: string; loc?: unknown[]; type?: string }>;
   }>;
 
   const data = axiosError.response?.data;
+
+  if (Array.isArray(data?.details)) {
+    return data.details
+      .map((item) => {
+        const msg = item.msg?.replace(/^Value error,\s*/i, "");
+        return msg;
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
 
   if (data?.message) {
     return data.message;
@@ -44,10 +55,9 @@ function getErrorMessage(error: unknown): string {
 
   return "Có lỗi xảy ra khi gọi API";
 }
-
 axiosInstance.interceptors.request.use((config) => {
   if (typeof window !== "undefined") {
-    const token = localStorage.getItem("token");
+    const token = getToken();
 
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;

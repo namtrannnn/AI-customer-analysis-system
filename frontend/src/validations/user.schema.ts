@@ -1,21 +1,69 @@
-import type { UserCreatePayload } from "@/types/user.type";
+import type { UserCreatePayload, UserUpdatePayload } from "@/types/user.type";
 
-export type UserFormErrors = Partial<Record<keyof UserCreatePayload, string>>;
+export type UserFormErrors = Partial<
+  Record<keyof UserCreatePayload | keyof UserUpdatePayload, string>
+>;
+
+const fullNameRegex = /^([^\W\d_]|\s)+$/u;
+const phoneRegex = /^(0|\+84)[35789][0-9]{8}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateFullName(fullName?: string): string | undefined {
+  const value = fullName?.trim();
+
+  if (!value) {
+    return "Họ tên không được để trống";
+  }
+
+  if (value.length < 2) {
+    return "Họ tên tối thiểu 2 ký tự";
+  }
+
+  if (!fullNameRegex.test(value)) {
+    return "Họ tên không được chứa số hoặc ký tự đặc biệt";
+  }
+
+  return undefined;
+}
 
 export function validateUserCreate(values: UserCreatePayload): UserFormErrors {
   const errors: UserFormErrors = {};
 
-  if (!values.full_name?.trim()) {
-    errors.full_name = "Họ tên không được để trống";
-  } else if (values.full_name.trim().length < 2) {
-    errors.full_name = "Họ tên tối thiểu 2 ký tự";
+  const fullNameError = validateFullName(values.full_name);
+  if (fullNameError) {
+    errors.full_name = fullNameError;
   }
 
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+  if (values.email && !emailRegex.test(values.email)) {
     errors.email = "Email không hợp lệ";
   }
 
-  if (values.phone && !/^(0|\+84)[35789][0-9]{8}$/.test(values.phone)) {
+  if (values.phone && !phoneRegex.test(values.phone)) {
+    errors.phone = "Số điện thoại không đúng định dạng";
+  }
+
+  if (!values.role_ids || values.role_ids.length === 0) {
+    errors.role_ids = "Vui lòng chọn ít nhất 1 vai trò";
+  }
+  if (!values.role_ids || values.role_ids.length !== 1) {
+    errors.role_ids = "Mỗi người dùng chỉ được chọn duy nhất 1 vai trò";
+  }
+  return errors;
+}
+
+export function validateUserUpdate(values: UserUpdatePayload): UserFormErrors {
+  const errors: UserFormErrors = {};
+
+  const fullNameError = validateFullName(values.full_name);
+  if (fullNameError) {
+    errors.full_name = fullNameError;
+  }
+
+  if (values.email && !emailRegex.test(values.email)) {
+    errors.email = "Email không hợp lệ";
+  }
+
+  if (values.phone && !phoneRegex.test(values.phone)) {
     errors.phone = "Số điện thoại không đúng định dạng";
   }
 
@@ -23,5 +71,11 @@ export function validateUserCreate(values: UserCreatePayload): UserFormErrors {
     errors.role_ids = "Vui lòng chọn ít nhất 1 vai trò";
   }
 
+  if (values.status && !["active", "inactive"].includes(values.status)) {
+    errors.status = "Trạng thái không hợp lệ";
+  }
+  if (!values.role_ids || values.role_ids.length !== 1) {
+    errors.role_ids = "Mỗi người dùng chỉ được chọn duy nhất 1 vai trò";
+  }
   return errors;
 }

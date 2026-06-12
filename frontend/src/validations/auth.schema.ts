@@ -42,8 +42,15 @@ export function validateChangePassword(
 
   if (!values.new_password) {
     errors.new_password = "Mật khẩu mới không được để trống";
-  } else if (values.new_password.length < 6) {
-    errors.new_password = "Mật khẩu mới phải có ít nhất 6 ký tự";
+  } else if (values.new_password.length < 8) {
+    errors.new_password = "Mật khẩu mới phải có ít nhất 8 ký tự";
+  } else if (!/[A-Z]/.test(values.new_password)) {
+    errors.new_password = "Mật khẩu mới phải chứa ít nhất 1 chữ cái viết hoa";
+  } else if (!/\d/.test(values.new_password)) {
+    errors.new_password = "Mật khẩu mới phải chứa ít nhất 1 chữ số";
+  } else if (!/[@$!%*?&#^_-]/.test(values.new_password)) {
+    errors.new_password =
+      "Mật khẩu mới phải chứa ít nhất 1 ký tự đặc biệt (@, $, !, %, *, ?, &, #, ^, _, -)";
   }
 
   if (!values.confirm_password) {

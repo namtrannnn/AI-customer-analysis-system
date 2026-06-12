@@ -80,3 +80,17 @@ export async function uploadUserAvatar(
     },
   });
 }
+
+// ─── Reset password ────────────────────────────────────────────────────────────
+export interface ResetPasswordResponse {
+  new_temporary_password: string;
+}
+
+export async function resetUserPassword(
+  userId: number,
+): Promise<ResetPasswordResponse> {
+  return http.post<ResetPasswordResponse>(
+    `/auth/admin/reset-password/${userId}`,
+    {},
+  );
+}

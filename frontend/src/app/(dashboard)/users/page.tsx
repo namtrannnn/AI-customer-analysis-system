@@ -110,11 +110,16 @@ export default function UsersPage() {
   async function handleUpdate(payload: UserUpdatePayload, roleIds: number[]) {
     if (!editTarget) return;
 
+    const finalPayload = {
+      ...payload,
+      role_ids: roleIds,
+    };
+
+    console.log("UPDATE ID:", editTarget.id);
+    console.log("UPDATE PAYLOAD:", finalPayload);
+
     try {
-      await updateUser(editTarget.id, {
-        ...payload,
-        role_ids: roleIds,
-      });
+      await updateUser(editTarget.id, finalPayload);
 
       showToast("success", "Cập nhật thành công");
       setEditTarget(null);

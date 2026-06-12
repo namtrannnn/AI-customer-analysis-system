@@ -1,5 +1,5 @@
-export const TOKEN_KEY = "token";
-export const USER_KEY = "user";
+export const TOKEN_KEY = "ai_customer_token";
+export const USER_KEY = "ai_customer_user";
 
 export function setToken(token: string): void {
   if (typeof window === "undefined") return;

@@ -12,10 +12,11 @@ import {
   updateUser,
   deleteUser,
   uploadUserAvatar,
+  resetUserPassword,
 } from "@/services/user.service";
 import type { User, UserStatus, UserUpdatePayload } from "@/types/user.type";
 import { formatDate, formatDateTime } from "@/utils/formatDate";
-import { ShieldCheck, Camera } from "lucide-react";
+import { ShieldCheck, Camera, KeyRound } from "lucide-react";
 
 const ROLE_LABEL_MAP: Record<number, string> = {
   1: "Quản trị viên",
@@ -58,7 +59,13 @@ export default function UserDetailPage() {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
+
   const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetPasswordResult, setResetPasswordResult] = useState<string | null>(
+    null,
+  );
 
   const [toast, setToast] = useState<{
     type: "success" | "error";
@@ -167,6 +174,33 @@ export default function UserDetailPage() {
     }
   }
 
+  async function handleResetPassword() {
+    if (!user) return;
+
+    const ok = window.confirm(
+      `Bạn có chắc muốn reset mật khẩu cho "${user.full_name}" không?`,
+    );
+
+    if (!ok) return;
+
+    setResetLoading(true);
+    setResetPasswordResult(null);
+
+    try {
+      const result = await resetUserPassword(user.id);
+
+      setResetPasswordResult(result.new_temporary_password);
+      showToast("success", "Reset mật khẩu thành công");
+    } catch (e: unknown) {
+      showToast(
+        "error",
+        e instanceof Error ? e.message : "Reset mật khẩu thất bại",
+      );
+    } finally {
+      setResetLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -208,7 +242,7 @@ export default function UserDetailPage() {
       </nav>
 
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
+        <div className="flex items-start gap-4">
           <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full bg-slate-200 shadow ring-2 ring-white dark:bg-slate-700 dark:ring-slate-800">
             {user.avatar_url ? (
               <Image
@@ -264,16 +298,47 @@ export default function UserDetailPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                disabled
-                title="BE chưa có API reset password"
+                onClick={handleResetPassword}
+                loading={resetLoading}
               >
+                <KeyRound className="mr-1 h-4 w-4" />
                 Reset mật khẩu
               </Button>
             </div>
 
-            <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-              Reset mật khẩu sẽ bật sau khi backend thêm API.
-            </p>
+            {resetPasswordResult && (
+              <div className="mt-3 max-w-md rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                <p className="font-semibold">Mật khẩu tạm thời mới:</p>
+
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <code className="rounded bg-white/80 px-2 py-1 font-mono text-sm font-semibold dark:bg-slate-900/50">
+                    {resetPasswordResult}
+                  </code>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(
+                          resetPasswordResult,
+                        );
+                        showToast("success", "Đã copy mật khẩu");
+                      } catch {
+                        showToast("error", "Không copy được mật khẩu");
+                      }
+                    }}
+                    className="rounded-md border border-amber-300 px-2 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                  >
+                    Copy
+                  </button>
+                </div>
+
+                <p className="mt-1 text-xs opacity-80">
+                  Vui lòng lưu lại mật khẩu này. Người dùng cần đổi mật khẩu sau
+                  khi đăng nhập.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

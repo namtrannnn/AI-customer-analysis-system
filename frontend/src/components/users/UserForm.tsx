@@ -8,6 +8,7 @@ import Button from "@/components/ui/Button";
 import { getRoles } from "@/services/role.service";
 import {
   validateUserCreate,
+  validateUserUpdate,
   type UserFormErrors,
 } from "@/validations/user.schema";
 import { Check, ShieldCheck, Loader2 } from "lucide-react";
@@ -115,18 +116,9 @@ export default function UserForm({
       }
     };
 
-  function toggleRole(roleId: number) {
-    setSelectedRoleIds((prev) => {
-      const next = prev.includes(roleId)
-        ? prev.filter((id) => id !== roleId)
-        : [...prev, roleId];
-
-      if (next.length > 0) {
-        setRoleErrorText(null);
-      }
-
-      return next;
-    });
+  function selectRole(roleId: number) {
+    setSelectedRoleIds([roleId]);
+    setRoleErrorText(null);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -140,6 +132,8 @@ export default function UserForm({
       setRoleErrorText("Vui lòng chọn ít nhất 1 nhóm quyền");
       return;
     }
+
+    setRoleErrorText(null);
 
     if (mode === "create") {
       const createPayload: UserCreatePayload = {
@@ -174,6 +168,15 @@ export default function UserForm({
       status: values.status,
       role_ids: selectedRoleIds,
     };
+
+    const errs = validateUserUpdate(updatePayload);
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
 
     setLoading(true);
 
@@ -274,9 +277,10 @@ export default function UserForm({
                     }`}
                   >
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="user-role"
                       checked={checked}
-                      onChange={() => toggleRole(role.id)}
+                      onChange={() => selectRole(role.id)}
                       className="sr-only"
                     />
 

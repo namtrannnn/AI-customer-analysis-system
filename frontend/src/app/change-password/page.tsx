@@ -55,6 +55,7 @@ export default function ChangePasswordPage() {
       await changePassword({
         old_password: values.old_password,
         new_password: values.new_password,
+        confirm_password: values.confirm_password,
       });
 
       setSuccess("Đổi mật khẩu thành công. Đang chuyển vào hệ thống...");
