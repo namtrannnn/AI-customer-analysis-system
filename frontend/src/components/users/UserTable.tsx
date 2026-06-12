@@ -88,7 +88,7 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
               const firstChar =
                 user.full_name?.trim()?.charAt(0)?.toUpperCase() || "U";
 
-              const roleIds = user.role_ids ?? [];
+              const roleId = user.role_id;
 
               return (
                 <tr
@@ -139,28 +139,15 @@ export default function UserTable({ users, onEdit, onDelete }: UserTableProps) {
                   </td>
 
                   <td className="px-4 py-3">
-                    {roleIds.length === 0 ? (
+                    {!roleId ? (
                       <span className="text-xs text-slate-400 dark:text-slate-500">
                         Chưa gán
                       </span>
                     ) : (
-                      <div className="flex max-w-[240px] flex-wrap gap-1.5">
-                        {roleIds.slice(0, 2).map((roleId) => (
-                          <span
-                            key={roleId}
-                            className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20"
-                          >
-                            <ShieldCheck className="h-3 w-3" />
-                            {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
-                          </span>
-                        ))}
-
-                        {roleIds.length > 2 && (
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                            +{roleIds.length - 2}
-                          </span>
-                        )}
-                      </div>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
+                        <ShieldCheck className="h-3 w-3" />
+                        {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
+                      </span>
                     )}
                   </td>
 

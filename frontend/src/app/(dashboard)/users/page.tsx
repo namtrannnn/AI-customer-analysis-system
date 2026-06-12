@@ -83,12 +83,9 @@ export default function UsersPage() {
     setTimeout(() => setToast(null), 3000);
   }
 
-  async function handleCreate(payload: UserCreatePayload, roleIds: number[]) {
+  async function handleCreate(payload: UserCreatePayload) {
     try {
-      const created = await createUser({
-        ...payload,
-        role_ids: roleIds,
-      });
+      const created = await createUser(payload);
 
       setCreatedAccount({
         username: created.username,
@@ -107,19 +104,11 @@ export default function UsersPage() {
     }
   }
 
-  async function handleUpdate(payload: UserUpdatePayload, roleIds: number[]) {
+  async function handleUpdate(payload: UserUpdatePayload) {
     if (!editTarget) return;
 
-    const finalPayload = {
-      ...payload,
-      role_ids: roleIds,
-    };
-
-    console.log("UPDATE ID:", editTarget.id);
-    console.log("UPDATE PAYLOAD:", finalPayload);
-
     try {
-      await updateUser(editTarget.id, finalPayload);
+      await updateUser(editTarget.id, payload);
 
       showToast("success", "Cập nhật thành công");
       setEditTarget(null);
@@ -219,12 +208,30 @@ export default function UsersPage() {
                 {createdAccount.temporary_password}
               </span>
             </div>
+
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(
+                      `Username: ${createdAccount.username}\nPassword: ${createdAccount.temporary_password}`,
+                    );
+                    showToast("success", "Đã copy tài khoản");
+                  } catch {
+                    showToast("error", "Không copy được tài khoản");
+                  }
+                }}
+                className="rounded-lg border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 dark:border-emerald-500/40 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
+              >
+                Copy tài khoản
+              </button>
+            </div>
           </div>
         </div>
       )}
 
       <div className="rounded-xl bg-white shadow-sm dark:bg-slate-800 dark:shadow-slate-900/50">
-        {/* Filter */}
         <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4 dark:border-slate-700">
           <div className="min-w-[220px] flex-1">
             <Input
@@ -272,7 +279,6 @@ export default function UsersPage() {
           </select>
         </div>
 
-        {/* Stats */}
         {result && (
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2 dark:border-slate-700">
             <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -289,7 +295,6 @@ export default function UsersPage() {
           </div>
         )}
 
-        {/* Table */}
         <div className="p-4">
           {loading ? (
             <Loading text="Đang tải danh sách người dùng..." />
@@ -309,7 +314,6 @@ export default function UsersPage() {
           )}
         </div>
 
-        {/* Pagination */}
         {!loading && !error && totalPages > 1 && (
           <div className="flex items-center justify-center gap-1 border-t border-slate-100 px-4 py-3 dark:border-slate-700">
             <button

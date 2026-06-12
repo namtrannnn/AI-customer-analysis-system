@@ -23,18 +23,15 @@ interface UserFormValues {
 interface UserFormProps {
   mode: "create" | "edit";
   initialValues?: Partial<UserFormValues>;
-  initialRoleIds?: number[];
-  onSubmit: (
-    payload: UserCreatePayload | UserUpdatePayload,
-    roleIds: number[],
-  ) => Promise<void>;
+  initialRoleId?: number | null;
+  onSubmit: (payload: UserCreatePayload | UserUpdatePayload) => Promise<void>;
   onCancel: () => void;
 }
 
 export default function UserForm({
   mode,
   initialValues,
-  initialRoleIds,
+  initialRoleId,
   onSubmit,
   onCancel,
 }: UserFormProps) {
@@ -53,15 +50,9 @@ export default function UserForm({
     ],
   );
 
-  const initialRoleKey = useMemo(
-    () => (initialRoleIds ?? []).join(","),
-    [initialRoleIds],
-  );
-
   const [values, setValues] = useState<UserFormValues>(safeInitialValues);
-
-  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>(
-    initialRoleIds ?? [],
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(
+    initialRoleId ?? null,
   );
 
   const [roles, setRoles] = useState<Role[]>([]);
@@ -72,13 +63,12 @@ export default function UserForm({
   const [roleErrorText, setRoleErrorText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Chỉ reset form khi đổi user edit hoặc đổi mode, không reset mỗi lần gõ
   useEffect(() => {
     setValues(safeInitialValues);
-    setSelectedRoleIds(initialRoleIds ?? []);
+    setSelectedRoleId(initialRoleId ?? null);
     setErrors({});
     setRoleErrorText(null);
-  }, [mode, safeInitialValues, initialRoleKey]);
+  }, [mode, safeInitialValues, initialRoleId]);
 
   useEffect(() => {
     async function fetchRoles() {
@@ -108,7 +98,7 @@ export default function UserForm({
         [field]: e.target.value,
       }));
 
-      if (errors[field as keyof UserCreatePayload]) {
+      if (errors[field as keyof UserFormErrors]) {
         setErrors((prev) => ({
           ...prev,
           [field]: undefined,
@@ -117,8 +107,15 @@ export default function UserForm({
     };
 
   function selectRole(roleId: number) {
-    setSelectedRoleIds([roleId]);
+    setSelectedRoleId(roleId);
     setRoleErrorText(null);
+
+    if (errors.role_id) {
+      setErrors((prev) => ({
+        ...prev,
+        role_id: undefined,
+      }));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -128,8 +125,8 @@ export default function UserForm({
     const cleanEmail = values.email.trim() || null;
     const cleanPhone = values.phone.trim() || null;
 
-    if (selectedRoleIds.length === 0) {
-      setRoleErrorText("Vui lòng chọn ít nhất 1 nhóm quyền");
+    if (!selectedRoleId) {
+      setRoleErrorText("Vui lòng chọn 1 nhóm quyền");
       return;
     }
 
@@ -140,7 +137,7 @@ export default function UserForm({
         full_name: cleanFullName,
         email: cleanEmail,
         phone: cleanPhone,
-        role_ids: selectedRoleIds,
+        role_id: selectedRoleId,
       };
 
       const errs = validateUserCreate(createPayload);
@@ -150,10 +147,11 @@ export default function UserForm({
         return;
       }
 
+      setErrors({});
       setLoading(true);
 
       try {
-        await onSubmit(createPayload, selectedRoleIds);
+        await onSubmit(createPayload);
       } finally {
         setLoading(false);
       }
@@ -166,7 +164,7 @@ export default function UserForm({
       email: cleanEmail,
       phone: cleanPhone,
       status: values.status,
-      role_ids: selectedRoleIds,
+      role_id: selectedRoleId,
     };
 
     const errs = validateUserUpdate(updatePayload);
@@ -177,11 +175,10 @@ export default function UserForm({
     }
 
     setErrors({});
-
     setLoading(true);
 
     try {
-      await onSubmit(updatePayload, selectedRoleIds);
+      await onSubmit(updatePayload);
     } finally {
       setLoading(false);
     }
@@ -233,6 +230,10 @@ export default function UserForm({
             <option value="active">Hoạt động</option>
             <option value="inactive">Ngừng hoạt động</option>
           </select>
+
+          {errors.status && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.status}</p>
+          )}
         </div>
       )}
 
@@ -243,9 +244,9 @@ export default function UserForm({
             Nhóm quyền <span className="text-red-500">*</span>
           </label>
 
-          {selectedRoleIds.length > 0 && (
+          {selectedRoleId && (
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-              Đã chọn {selectedRoleIds.length}
+              Đã chọn 1 quyền
             </span>
           )}
         </div>
@@ -265,7 +266,7 @@ export default function UserForm({
           ) : (
             <div className="flex flex-wrap gap-2">
               {roles.map((role) => {
-                const checked = selectedRoleIds.includes(role.id);
+                const checked = selectedRoleId === role.id;
 
                 return (
                   <label
@@ -285,7 +286,7 @@ export default function UserForm({
                     />
 
                     <span
-                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border ${
                         checked
                           ? "border-blue-500 bg-blue-500 text-white"
                           : "border-slate-300 dark:border-slate-500"
@@ -302,8 +303,10 @@ export default function UserForm({
           )}
         </div>
 
-        {roleErrorText && (
-          <p className="mt-1.5 text-xs text-red-500">{roleErrorText}</p>
+        {(roleErrorText || errors.role_id) && (
+          <p className="mt-1.5 text-xs text-red-500">
+            {roleErrorText || errors.role_id}
+          </p>
         )}
       </div>
 

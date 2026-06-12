@@ -11,14 +11,8 @@ const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateFullName(fullName?: string): string | undefined {
   const value = fullName?.trim();
 
-  if (!value) {
-    return "Họ tên không được để trống";
-  }
-
-  if (value.length < 2) {
-    return "Họ tên tối thiểu 2 ký tự";
-  }
-
+  if (!value) return "Họ tên không được để trống";
+  if (value.length < 2) return "Họ tên tối thiểu 2 ký tự";
   if (!fullNameRegex.test(value)) {
     return "Họ tên không được chứa số hoặc ký tự đặc biệt";
   }
@@ -30,9 +24,7 @@ export function validateUserCreate(values: UserCreatePayload): UserFormErrors {
   const errors: UserFormErrors = {};
 
   const fullNameError = validateFullName(values.full_name);
-  if (fullNameError) {
-    errors.full_name = fullNameError;
-  }
+  if (fullNameError) errors.full_name = fullNameError;
 
   if (values.email && !emailRegex.test(values.email)) {
     errors.email = "Email không hợp lệ";
@@ -42,12 +34,10 @@ export function validateUserCreate(values: UserCreatePayload): UserFormErrors {
     errors.phone = "Số điện thoại không đúng định dạng";
   }
 
-  if (!values.role_ids || values.role_ids.length === 0) {
-    errors.role_ids = "Vui lòng chọn ít nhất 1 vai trò";
+  if (!values.role_id) {
+    errors.role_id = "Vui lòng chọn 1 vai trò";
   }
-  if (!values.role_ids || values.role_ids.length !== 1) {
-    errors.role_ids = "Mỗi người dùng chỉ được chọn duy nhất 1 vai trò";
-  }
+
   return errors;
 }
 
@@ -55,9 +45,7 @@ export function validateUserUpdate(values: UserUpdatePayload): UserFormErrors {
   const errors: UserFormErrors = {};
 
   const fullNameError = validateFullName(values.full_name);
-  if (fullNameError) {
-    errors.full_name = fullNameError;
-  }
+  if (fullNameError) errors.full_name = fullNameError;
 
   if (values.email && !emailRegex.test(values.email)) {
     errors.email = "Email không hợp lệ";
@@ -67,15 +55,13 @@ export function validateUserUpdate(values: UserUpdatePayload): UserFormErrors {
     errors.phone = "Số điện thoại không đúng định dạng";
   }
 
-  if (!values.role_ids || values.role_ids.length === 0) {
-    errors.role_ids = "Vui lòng chọn ít nhất 1 vai trò";
+  if (!values.role_id) {
+    errors.role_id = "Vui lòng chọn 1 vai trò";
   }
 
   if (values.status && !["active", "inactive"].includes(values.status)) {
     errors.status = "Trạng thái không hợp lệ";
   }
-  if (!values.role_ids || values.role_ids.length !== 1) {
-    errors.role_ids = "Mỗi người dùng chỉ được chọn duy nhất 1 vai trò";
-  }
+
   return errors;
 }

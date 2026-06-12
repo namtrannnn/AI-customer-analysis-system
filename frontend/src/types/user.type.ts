@@ -14,16 +14,8 @@ export interface User {
   created_at: string;
   updated_at: string | null;
 
-  // BE hiện trả role_ids thay vì roles object
-  role_ids: number[];
-}
-
-export interface UserRole {
-  id: number;
-  role_id: number;
-  role_code: string;
-  role_name: string;
-  assigned_at: string;
+  // BE mới trả 1 quyền duy nhất
+  role_id: number | null;
 }
 
 export interface UserCreatePayload {
@@ -31,7 +23,7 @@ export interface UserCreatePayload {
   email?: string | null;
   phone?: string | null;
   avatar_url?: string | null;
-  role_ids: number[];
+  role_id: number | null;
 }
 
 export interface UserCreateResponse {
@@ -47,7 +39,7 @@ export interface UserUpdatePayload {
   phone?: string | null;
   avatar_url?: string | null;
   status?: "active" | "inactive";
-  role_ids?: number[];
+  role_id?: number | null;
 }
 
 export interface UserFilterParams {
