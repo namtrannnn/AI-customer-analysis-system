@@ -5,7 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Bell, ChevronDown, FileText, Search } from "lucide-react";
 
-import { getCurrentUser } from "@/services/auth.service";
+import { getCurrentUser, logout } from "@/services/auth.service";
 import { ThemeToggleDropdown } from "./ThemeToggle";
 import { useIsDark } from "@/hooks/useIsDark";
 import { routeLabels } from "@/config/routeLabels.config";
@@ -263,9 +263,8 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
     setUser(getCurrentUser());
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 

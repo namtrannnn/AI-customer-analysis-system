@@ -6,7 +6,8 @@ export interface LoginRequest {
 export interface LoginResponse {
   access_token: string;
   token_type: string;
-  user: AuthUser;
+  is_first_login: boolean;
+  user_info: AuthUser;
 }
 
 export interface AuthUser {
@@ -14,6 +15,17 @@ export interface AuthUser {
   full_name: string;
   username: string;
   email: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
   status: string;
-  roles: string[];
+  role_ids: number[];
+  roles?: string[];
+  last_login_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface ChangePasswordRequest {
+  old_password: string;
+  new_password: string;
 }

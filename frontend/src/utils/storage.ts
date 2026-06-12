@@ -1,52 +1,53 @@
-/**
- * Wrapper an toàn cho localStorage (tránh lỗi SSR)
- */
-
-export const storage = {
-  get<T>(key: string): T | null {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = localStorage.getItem(key);
-      return raw ? (JSON.parse(raw) as T) : null;
-    } catch {
-      return null;
-    }
-  },
-
-  set<T>(key: string, value: T): void {
-    if (typeof window === "undefined") return;
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // quota exceeded hoặc private mode — bỏ qua
-    }
-  },
-
-  remove(key: string): void {
-    if (typeof window === "undefined") return;
-    localStorage.removeItem(key);
-  },
-
-  clear(): void {
-    if (typeof window === "undefined") return;
-    localStorage.clear();
-  },
-};
-
-// ─── Typed helpers ────────────────────────────────────────────────────────────
 export const TOKEN_KEY = "token";
 export const USER_KEY = "user";
+
+export function setToken(token: string): void {
+  if (typeof window === "undefined") return;
+
+  localStorage.setItem(TOKEN_KEY, token);
+
+  document.cookie = `${TOKEN_KEY}=${token}; path=/; max-age=${60 * 60 * 24}; SameSite=Lax`;
+}
+
+export function removeToken(): void {
+  if (typeof window === "undefined") return;
+
+  localStorage.removeItem(TOKEN_KEY);
+
+  document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
+}
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
+export function setUser<T>(user: T): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
 }
 
-export function removeToken(): void {
+export function getUser<T>(): T | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function removeUser(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(USER_KEY);
+}
+
+export function clearAuthStorage(): void {
+  if (typeof window === "undefined") return;
+
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(USER_KEY);
+
+  document.cookie = `${TOKEN_KEY}=; path=/; max-age=0; SameSite=Lax`;
 }

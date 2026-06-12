@@ -7,9 +7,12 @@ import Button from "@/components/ui/Button";
 import { login } from "@/services/auth.service";
 import { validateLogin } from "@/validations/auth.schema";
 import type { LoginErrors } from "@/validations/auth.schema";
-
+import { useSearchParams } from "next/navigation";
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const reason = searchParams.get("reason");
+
   const [values, setValues] = useState({ username: "", password: "" });
   const [errors, setErrors] = useState<LoginErrors>({});
   const [apiError, setApiError] = useState<string | null>(null);
@@ -34,9 +37,15 @@ export default function LoginPage() {
 
     setLoading(true);
     setApiError(null);
+
     try {
-      await login(values);
-      router.push("/dashboard");
+      const response = await login(values);
+
+      if (response.is_first_login) {
+        router.push("/change-password");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : "Đăng nhập thất bại");
     } finally {
@@ -96,14 +105,22 @@ export default function LoginPage() {
               required
               autoComplete="current-password"
             />
-
+            {reason === "unauthorized" && (
+              <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-700">
+                Bạn cần đăng nhập để truy cập trang này.
+              </div>
+            )}
             {apiError && (
               <div className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-600">
                 {apiError}
               </div>
             )}
 
-            <Button type="submit" className="w-full justify-center" loading={loading}>
+            <Button
+              type="submit"
+              className="w-full justify-center"
+              loading={loading}
+            >
               Đăng nhập
             </Button>
           </form>
@@ -111,9 +128,15 @@ export default function LoginPage() {
           {/* Demo hint */}
           <div
             className="mt-5 rounded-xl px-3 py-3"
-            style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+            style={{
+              background: "var(--bg-surface-2)",
+              border: "1px solid var(--border)",
+            }}
           >
-            <p className="mb-1.5 text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
+            <p
+              className="mb-1.5 text-xs font-medium"
+              style={{ color: "var(--text-secondary)" }}
+            >
               Tài khoản demo:
             </p>
             {[
@@ -125,7 +148,10 @@ export default function LoginPage() {
                 key={acc.username}
                 type="button"
                 onClick={() => {
-                  setValues({ username: acc.username, password: "password123" });
+                  setValues({
+                    username: acc.username,
+                    password: "password123",
+                  });
                   setErrors({});
                   setApiError(null);
                 }}
@@ -135,7 +161,7 @@ export default function LoginPage() {
               </button>
             ))}
             <p className="mt-1 text-xs text-slate-400">
-              Mật khẩu bất kỳ đều hoạt động (mock)
+              Dùng tài khoản do Admin cấp từ backend
             </p>
           </div>
         </div>

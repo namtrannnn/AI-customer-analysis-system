@@ -20,3 +20,45 @@ export function validateLogin(values: LoginForm): LoginErrors {
 
   return errors;
 }
+
+export interface ChangePasswordForm {
+  old_password: string;
+  new_password: string;
+  confirm_password: string;
+}
+
+export type ChangePasswordErrors = Partial<
+  Record<keyof ChangePasswordForm, string>
+>;
+
+export function validateChangePassword(
+  values: ChangePasswordForm,
+): ChangePasswordErrors {
+  const errors: ChangePasswordErrors = {};
+
+  if (!values.old_password) {
+    errors.old_password = "Mật khẩu hiện tại không được để trống";
+  }
+
+  if (!values.new_password) {
+    errors.new_password = "Mật khẩu mới không được để trống";
+  } else if (values.new_password.length < 6) {
+    errors.new_password = "Mật khẩu mới phải có ít nhất 6 ký tự";
+  }
+
+  if (!values.confirm_password) {
+    errors.confirm_password = "Vui lòng nhập lại mật khẩu mới";
+  } else if (values.confirm_password !== values.new_password) {
+    errors.confirm_password = "Mật khẩu nhập lại không khớp";
+  }
+
+  if (
+    values.old_password &&
+    values.new_password &&
+    values.old_password === values.new_password
+  ) {
+    errors.new_password = "Mật khẩu mới không được trùng mật khẩu hiện tại";
+  }
+
+  return errors;
+}
