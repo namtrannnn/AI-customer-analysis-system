@@ -98,8 +98,7 @@ export async function getPermissionsByModule(): Promise<PermissionsByModule> {
   const permissions = await getAllPermissions();
 
   return permissions.reduce<PermissionsByModule>((acc, permission) => {
-    const moduleKey =
-      permission.module_name || permission.module_group || "Khác";
+    const moduleKey = permission.module_name || "Khác";
 
     if (!acc[moduleKey]) acc[moduleKey] = [];
     acc[moduleKey].push(permission);

@@ -115,13 +115,15 @@ export default function ProfilePage() {
       return;
     }
 
+    const currentUserId = currentUser.id;
+
     setAuthUser(currentUser);
 
     async function fetchProfile() {
       try {
         setLoading(true);
 
-        const data = await getUserById(currentUser.id);
+        const data = await getUserById(currentUserId);
 
         setUser(data);
         setFullName(data.full_name ?? "");
@@ -137,6 +139,7 @@ export default function ProfilePage() {
 
     fetchProfile();
   }, [router]);
+
   async function handleUploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
 
