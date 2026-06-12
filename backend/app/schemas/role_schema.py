@@ -62,7 +62,7 @@ class PermissionInfo(BaseModel):
     id: int
     permission_code: str
     permission_name: str
-    module_group: str
+    module_name: str
 
     model_config = {"from_attributes": True}
 

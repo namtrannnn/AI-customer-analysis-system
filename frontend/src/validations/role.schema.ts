@@ -5,14 +5,22 @@ export type RoleFormErrors = Partial<Record<keyof RoleCreatePayload, string>>;
 export function validateRole(values: RoleCreatePayload): RoleFormErrors {
   const errors: RoleFormErrors = {};
 
-  if (!values.role_code?.trim()) {
+  const roleCode = values.role_code?.trim().toLowerCase() ?? "";
+  const roleName = values.role_name?.trim() ?? "";
+
+  if (!roleCode) {
     errors.role_code = "Mã nhóm quyền không được để trống";
-  } else if (!/^[A-Z0-9_]{2,50}$/.test(values.role_code.toUpperCase())) {
-    errors.role_code = "Mã chỉ gồm chữ HOA, số, gạch dưới (VD: ADMIN, STAFF_01)";
+  } else if (roleCode.length < 2 || roleCode.length > 50) {
+    errors.role_code = "Mã nhóm quyền phải từ 2 đến 50 ký tự";
+  } else if (!/^[a-z0-9_]+$/.test(roleCode)) {
+    errors.role_code =
+      "Mã chỉ gồm chữ thường không dấu, số và gạch dưới (VD: admin, staff_01)";
   }
 
-  if (!values.role_name?.trim()) {
+  if (!roleName) {
     errors.role_name = "Tên nhóm quyền không được để trống";
+  } else if (roleName.length < 2 || roleName.length > 100) {
+    errors.role_name = "Tên nhóm quyền phải từ 2 đến 100 ký tự";
   }
 
   return errors;

@@ -1,15 +1,23 @@
+// src/types/permission.type.ts
+
 export interface Permission {
   id: number;
   permission_code: string;
   permission_name: string;
-  module_name: string;
-  description: string | null;
-  created_at: string;
+  module_group: string;
+
+  // Dự phòng nếu BE sau này đặt tên module_name
+  module_name?: string;
 }
 
-// Dùng cho trang Phân quyền — matrix role × permission
+export type PermissionsByModule = Record<string, Permission[]>;
+
 export interface RolePermissionMatrix {
-  role: { id: number; role_code: string; role_name: string };
+  role: {
+    id: number;
+    role_code: string;
+    role_name: string;
+  };
   permission_ids: number[];
 }
 
@@ -17,6 +25,3 @@ export interface UpdateRolePermissionsPayload {
   role_id: number;
   permission_ids: number[];
 }
-
-// Nhóm permissions theo module
-export type PermissionsByModule = Record<string, Permission[]>;

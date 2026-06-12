@@ -1,23 +1,46 @@
+export interface RoleUser {
+  id: number;
+  full_name: string;
+  username: string;
+  avatar_url: string | null;
+}
+
+export interface RolePermission {
+  id: number;
+  permission_code: string;
+  permission_name: string;
+  module_group: string;
+}
+
 export interface Role {
   id: number;
   role_code: string;
   role_name: string;
   description: string | null;
   created_at: string;
-  // Số permissions được gán
-  permission_count: number;
-  // Số users được gán role này
-  user_count: number;
+  updated_at?: string | null;
+
+  // Dùng cho API GET /roles/{role_id}
+  permission_ids?: number[];
+
+  // Dùng cho API GET /roles/full-details
+  users?: RoleUser[];
+  permissions?: RolePermission[];
 }
 
 export interface RoleCreatePayload {
   role_code: string;
   role_name: string;
-  description?: string;
-  permission_ids?: number[];
+  description?: string | null;
+  permission_ids: number[];
 }
 
-export interface RoleUpdatePayload extends Partial<RoleCreatePayload> {}
+export interface RoleUpdatePayload {
+  role_code?: string;
+  role_name?: string;
+  description?: string | null;
+  permission_ids?: number[];
+}
 
 export interface RoleFilterParams {
   search?: string;
