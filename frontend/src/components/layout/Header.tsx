@@ -3,18 +3,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { getCurrentUser } from "@/services/auth.service";
+import { Bell, ChevronDown, FileText, Search } from "lucide-react";
+
+import { getCurrentUser, logout } from "@/services/auth.service";
 import { ThemeToggleDropdown } from "./ThemeToggle";
 import { useIsDark } from "@/hooks/useIsDark";
+import { routeLabels } from "@/config/routeLabels.config";
+import { userMenuItems } from "@/config/userMenu.config";
 import type { AuthUser } from "@/types/auth.type";
-
-const routeLabels: Record<string, string> = {
-  dashboard: "Tổng quan",
-  customers: "Khách hàng",
-  users: "Người dùng",
-  roles: "Nhóm quyền",
-  permissions: "Phân quyền",
-};
 
 function useBreadcrumbs() {
   const pathname = usePathname();
@@ -27,7 +23,12 @@ function useBreadcrumbs() {
   return segments.map((seg, idx) => {
     const href = "/" + segments.slice(0, idx + 1).join("/");
     const label = routeLabels[seg] ?? (seg.match(/^\d+$/) ? `#${seg}` : seg);
-    return { href, label, isLast: idx === segments.length - 1 };
+
+    return {
+      href,
+      label,
+      isLast: idx === segments.length - 1,
+    };
   });
 }
 
@@ -44,23 +45,13 @@ function SearchBox() {
       }`}
     >
       <span className="flex items-center gap-2">
-        <svg
+        <Search
           className={`h-4 w-4 transition-colors ${
             isDark
               ? "text-slate-500 group-hover:text-blue-400"
               : "text-slate-400 group-hover:text-blue-500"
           }`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            d="M21 21l-4.35-4.35M17 11A6 6 0 115 11a6 6 0 0112 0z"
-          />
-        </svg>
+        />
         <span>Tìm kiếm khách hàng, người dùng...</span>
       </span>
 
@@ -89,19 +80,7 @@ function NotificationBell() {
           : "border-slate-200/80 bg-white/70 text-slate-500 hover:border-blue-200 hover:bg-white hover:text-slate-800 hover:shadow-md"
       }`}
     >
-      <svg
-        className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-rotate-12"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        strokeWidth={1.9}
-      >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-        />
-      </svg>
+      <Bell className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-rotate-12" />
 
       <span
         className={`absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ${
@@ -133,6 +112,7 @@ function UserMenu({
     };
 
     document.addEventListener("mousedown", h);
+
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
@@ -159,6 +139,7 @@ function UserMenu({
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-xs font-bold text-white shadow-md shadow-blue-500/20">
             {initials}
           </div>
+
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
         </div>
 
@@ -170,24 +151,17 @@ function UserMenu({
           >
             {user?.full_name ?? "Người dùng"}
           </p>
+
           <p className="mt-1 truncate text-[11px] font-medium text-slate-400">
             {user?.roles?.[0] ?? "Member"}
           </p>
         </div>
 
-        <svg
+        <ChevronDown
           className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${
             open ? "rotate-180" : ""
           }`}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-            clipRule="evenodd"
-          />
-        </svg>
+        />
       </button>
 
       {open && (
@@ -218,6 +192,7 @@ function UserMenu({
                 >
                   {user?.full_name ?? "Người dùng"}
                 </p>
+
                 <p className="truncate text-xs text-slate-400">
                   {user?.email ?? user?.username ?? "No email"}
                 </p>
@@ -226,61 +201,51 @@ function UserMenu({
           </div>
 
           <div className="mt-2 space-y-1">
-            <Link
-              href="/users"
-              onClick={() => setOpen(false)}
-              className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                isDark
-                  ? "text-slate-300 hover:bg-white/[0.07] hover:text-white"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-              }`}
-            >
-              <span
-                className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-                  isDark ? "bg-white/[0.06]" : "bg-slate-100"
-                }`}
-              >
-                <svg
-                  className="h-4 w-4 text-slate-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.9}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                  />
-                </svg>
-              </span>
-              Tài khoản của tôi
-            </Link>
+            {userMenuItems.map((item) => {
+              const Icon = item.icon;
 
-            <button
-              onClick={() => {
-                setOpen(false);
-                onLogout();
-              }}
-              className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-red-500 transition-colors hover:bg-red-500/10"
-            >
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/10">
-                <svg
-                  className="h-4 w-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={1.9}
+              if (item.type === "logout") {
+                return (
+                  <button
+                    key={item.label}
+                    onClick={() => {
+                      setOpen(false);
+                      onLogout();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-semibold text-red-500 transition-colors hover:bg-red-500/10"
+                  >
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-500/10">
+                      <Icon className="h-4 w-4" />
+                    </span>
+
+                    {item.label}
+                  </button>
+                );
+              }
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href ?? "#"}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isDark
+                      ? "text-slate-300 hover:bg-white/[0.07] hover:text-white"
+                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                  }`}
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                  />
-                </svg>
-              </span>
-              Đăng xuất
-            </button>
+                  <span
+                    className={`flex h-8 w-8 items-center justify-center rounded-xl ${
+                      isDark ? "bg-white/[0.06]" : "bg-slate-100"
+                    }`}
+                  >
+                    <Icon className="h-4 w-4 text-slate-400" />
+                  </span>
+
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
         </div>
       )}
@@ -291,7 +256,6 @@ function UserMenu({
 export default function Header({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const breadcrumbs = useBreadcrumbs();
-  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(null);
   const isDark = useIsDark();
 
@@ -299,9 +263,8 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
     setUser(getCurrentUser());
   }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 
@@ -321,24 +284,7 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
       <div className="flex h-16 items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-4">
           <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-lg shadow-blue-500/20 md:flex">
-            <svg
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 7a3 3 0 013-3h10a3 3 0 013 3v10a3 3 0 01-3 3H7a3 3 0 01-3-3V7z"
-              />
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M9 9h6M9 13h6M9 17h3"
-              />
-            </svg>
+            <FileText className="h-5 w-5" />
           </div>
 
           <div className="min-w-0">
@@ -379,15 +325,11 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
 
               {breadcrumbs.map((crumb) => (
                 <span key={crumb.href} className="flex items-center gap-1.5">
-                  <svg
-                    className={`h-3.5 w-3.5 shrink-0 ${
+                  <ChevronDown
+                    className={`h-3.5 w-3.5 -rotate-90 ${
                       isDark ? "text-slate-700" : "text-slate-300"
                     }`}
-                    viewBox="0 0 16 16"
-                    fill="currentColor"
-                  >
-                    <path d="M6.22 3.22a.75.75 0 011.06 0l4.25 4.25a.75.75 0 010 1.06l-4.25 4.25a.75.75 0 01-1.06-1.06L9.94 8 6.22 4.28a.75.75 0 010-1.06z" />
-                  </svg>
+                  />
 
                   {crumb.isLast ? (
                     <span

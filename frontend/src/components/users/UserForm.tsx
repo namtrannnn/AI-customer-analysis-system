@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { UserCreatePayload, UserUpdatePayload } from "@/types/user.type";
 import type { Role } from "@/types/role.type";
 import Input from "@/components/ui/Input";
@@ -8,68 +8,67 @@ import Button from "@/components/ui/Button";
 import { getRoles } from "@/services/role.service";
 import {
   validateUserCreate,
+  validateUserUpdate,
   type UserFormErrors,
 } from "@/validations/user.schema";
 import { Check, ShieldCheck, Loader2 } from "lucide-react";
 
+interface UserFormValues {
+  full_name: string;
+  email: string;
+  phone: string;
+  status: "active" | "inactive";
+}
+
 interface UserFormProps {
   mode: "create" | "edit";
-  initialValues?: Partial<UserCreatePayload>;
-  initialRoleIds?: number[];
-  onSubmit: (
-    payload: UserCreatePayload | UserUpdatePayload,
-    roleIds: number[],
-  ) => Promise<void>;
+  initialValues?: Partial<UserFormValues>;
+  initialRoleId?: number | null;
+  onSubmit: (payload: UserCreatePayload | UserUpdatePayload) => Promise<void>;
   onCancel: () => void;
 }
 
 export default function UserForm({
   mode,
-  initialValues = {},
-  initialRoleIds = [],
+  initialValues,
+  initialRoleId,
   onSubmit,
   onCancel,
 }: UserFormProps) {
-  const [values, setValues] = useState<UserCreatePayload>({
-    full_name: initialValues.full_name ?? "",
-    username: initialValues.username ?? "",
-    email: initialValues.email ?? "",
-    phone: initialValues.phone ?? "",
-    password: "",
-    status: initialValues.status ?? "active",
-  });
+  const safeInitialValues = useMemo(
+    () => ({
+      full_name: initialValues?.full_name ?? "",
+      email: initialValues?.email ?? "",
+      phone: initialValues?.phone ?? "",
+      status: initialValues?.status ?? "active",
+    }),
+    [
+      initialValues?.full_name,
+      initialValues?.email,
+      initialValues?.phone,
+      initialValues?.status,
+    ],
+  );
 
-  const [selectedRoleIds, setSelectedRoleIds] =
-    useState<number[]>(initialRoleIds);
+  const [values, setValues] = useState<UserFormValues>(safeInitialValues);
+  const [selectedRoleId, setSelectedRoleId] = useState<number | null>(
+    initialRoleId ?? null,
+  );
 
   const [roles, setRoles] = useState<Role[]>([]);
   const [roleLoading, setRoleLoading] = useState(false);
   const [roleError, setRoleError] = useState<string | null>(null);
 
   const [errors, setErrors] = useState<UserFormErrors>({});
+  const [roleErrorText, setRoleErrorText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Sync lại form khi mở edit user khác
   useEffect(() => {
-    setValues({
-      full_name: initialValues.full_name ?? "",
-      username: initialValues.username ?? "",
-      email: initialValues.email ?? "",
-      phone: initialValues.phone ?? "",
-      password: "",
-      status: initialValues.status ?? "active",
-    });
-
-    setSelectedRoleIds(initialRoleIds);
+    setValues(safeInitialValues);
+    setSelectedRoleId(initialRoleId ?? null);
     setErrors({});
-  }, [
-    initialValues.full_name,
-    initialValues.username,
-    initialValues.email,
-    initialValues.phone,
-    initialValues.status,
-    initialRoleIds,
-  ]);
+    setRoleErrorText(null);
+  }, [mode, safeInitialValues, initialRoleId]);
 
   useEffect(() => {
     async function fetchRoles() {
@@ -92,55 +91,94 @@ export default function UserForm({
   }, []);
 
   const set =
-    (field: keyof UserCreatePayload) =>
+    (field: keyof UserFormValues) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-      setValues((prev) => ({ ...prev, [field]: e.target.value }));
+      setValues((prev) => ({
+        ...prev,
+        [field]: e.target.value,
+      }));
 
-      if (errors[field]) {
-        setErrors((prev) => ({ ...prev, [field]: undefined }));
+      if (errors[field as keyof UserFormErrors]) {
+        setErrors((prev) => ({
+          ...prev,
+          [field]: undefined,
+        }));
       }
     };
 
-  function toggleRole(roleId: number) {
-    setSelectedRoleIds((prev) =>
-      prev.includes(roleId)
-        ? prev.filter((id) => id !== roleId)
-        : [...prev, roleId],
-    );
+  function selectRole(roleId: number) {
+    setSelectedRoleId(roleId);
+    setRoleErrorText(null);
+
+    if (errors.role_id) {
+      setErrors((prev) => ({
+        ...prev,
+        role_id: undefined,
+      }));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const cleanFullName = values.full_name.trim();
+    const cleanEmail = values.email.trim() || null;
+    const cleanPhone = values.phone.trim() || null;
+
+    if (!selectedRoleId) {
+      setRoleErrorText("Vui lòng chọn 1 nhóm quyền");
+      return;
+    }
+
+    setRoleErrorText(null);
+
     if (mode === "create") {
-      const errs = validateUserCreate(values);
+      const createPayload: UserCreatePayload = {
+        full_name: cleanFullName,
+        email: cleanEmail,
+        phone: cleanPhone,
+        role_id: selectedRoleId,
+      };
+
+      const errs = validateUserCreate(createPayload);
 
       if (Object.keys(errs).length > 0) {
         setErrors(errs);
         return;
       }
+
+      setErrors({});
+      setLoading(true);
+
+      try {
+        await onSubmit(createPayload);
+      } finally {
+        setLoading(false);
+      }
+
+      return;
     }
 
+    const updatePayload: UserUpdatePayload = {
+      full_name: cleanFullName,
+      email: cleanEmail,
+      phone: cleanPhone,
+      status: values.status,
+      role_id: selectedRoleId,
+    };
+
+    const errs = validateUserUpdate(updatePayload);
+
+    if (Object.keys(errs).length > 0) {
+      setErrors(errs);
+      return;
+    }
+
+    setErrors({});
     setLoading(true);
 
     try {
-      const payload =
-        mode === "edit"
-          ? ({
-              full_name: values.full_name.trim(),
-              email: values.email?.trim() || undefined,
-              phone: values.phone?.trim() || undefined,
-              status: values.status,
-            } as UserUpdatePayload)
-          : ({
-              ...values,
-              full_name: values.full_name.trim(),
-              username: values.username.trim(),
-              email: values.email?.trim() || undefined,
-              phone: values.phone?.trim() || undefined,
-            } as UserCreatePayload);
-
-      await onSubmit(payload, selectedRoleIds);
+      await onSubmit(updatePayload);
     } finally {
       setLoading(false);
     }
@@ -160,79 +198,55 @@ export default function UserForm({
         />
 
         <Input
-          label="Tên đăng nhập"
-          value={values.username}
-          onChange={set("username")}
-          error={errors.username}
-          required
-          disabled={mode === "edit"}
-          hint={
-            mode === "edit" ? "Không thể thay đổi tên đăng nhập" : undefined
-          }
-          placeholder="nguyenvana"
-        />
-      </div>
-
-      {mode === "create" && (
-        <Input
-          label="Mật khẩu"
-          type="password"
-          value={values.password}
-          onChange={set("password")}
-          error={errors.password}
-          required
-          placeholder="Tối thiểu 6 ký tự"
-        />
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Input
           label="Email"
           type="email"
-          value={values.email ?? ""}
+          value={values.email}
           onChange={set("email")}
           error={errors.email}
           placeholder="example@company.com"
         />
-
-        <Input
-          label="Số điện thoại"
-          value={values.phone ?? ""}
-          onChange={set("phone")}
-          error={errors.phone}
-          placeholder="0901234567"
-          inputMode="tel"
-        />
       </div>
 
-      {/* Status */}
-      <div>
-        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-          Trạng thái <span className="text-red-500">*</span>
-        </label>
+      <Input
+        label="Số điện thoại"
+        value={values.phone}
+        onChange={set("phone")}
+        error={errors.phone}
+        placeholder="0901234567"
+        inputMode="tel"
+      />
 
-        <select
-          value={values.status ?? "active"}
-          onChange={set("status")}
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:ring-blue-900/40"
-        >
-          <option value="active">Hoạt động</option>
-          <option value="inactive">Ngừng hoạt động</option>
-          <option value="locked">Khóa tài khoản</option>
-        </select>
-      </div>
+      {mode === "edit" && (
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            Trạng thái <span className="text-red-500">*</span>
+          </label>
 
-      {/* Role assignment */}
+          <select
+            value={values.status}
+            onChange={set("status")}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:focus:ring-blue-900/40"
+          >
+            <option value="active">Hoạt động</option>
+            <option value="inactive">Ngừng hoạt động</option>
+          </select>
+
+          {errors.status && (
+            <p className="mt-1.5 text-xs text-red-500">{errors.status}</p>
+          )}
+        </div>
+      )}
+
       <div>
         <div className="mb-2 flex items-center justify-between gap-3">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
             <ShieldCheck className="h-4 w-4 text-blue-500" />
-            Nhóm quyền
+            Nhóm quyền <span className="text-red-500">*</span>
           </label>
 
-          {selectedRoleIds.length > 0 && (
+          {selectedRoleId && (
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-              Đã chọn {selectedRoleIds.length}
+              Đã chọn 1 quyền
             </span>
           )}
         </div>
@@ -252,7 +266,7 @@ export default function UserForm({
           ) : (
             <div className="flex flex-wrap gap-2">
               {roles.map((role) => {
-                const checked = selectedRoleIds.includes(role.id);
+                const checked = selectedRoleId === role.id;
 
                 return (
                   <label
@@ -264,14 +278,15 @@ export default function UserForm({
                     }`}
                   >
                     <input
-                      type="checkbox"
+                      type="radio"
+                      name="user-role"
                       checked={checked}
-                      onChange={() => toggleRole(role.id)}
+                      onChange={() => selectRole(role.id)}
                       className="sr-only"
                     />
 
                     <span
-                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border ${
+                      className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border ${
                         checked
                           ? "border-blue-500 bg-blue-500 text-white"
                           : "border-slate-300 dark:border-slate-500"
@@ -287,7 +302,20 @@ export default function UserForm({
             </div>
           )}
         </div>
+
+        {(roleErrorText || errors.role_id) && (
+          <p className="mt-1.5 text-xs text-red-500">
+            {roleErrorText || errors.role_id}
+          </p>
+        )}
       </div>
+
+      {mode === "create" && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300">
+          Hệ thống sẽ tự động sinh tên đăng nhập và mật khẩu tạm thời sau khi
+          tạo người dùng.
+        </div>
+      )}
 
       <div className="flex justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-700">
         <Button

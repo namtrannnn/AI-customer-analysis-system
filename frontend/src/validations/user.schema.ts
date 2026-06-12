@@ -1,32 +1,66 @@
-import type { UserCreatePayload } from "@/types/user.type";
+import type { UserCreatePayload, UserUpdatePayload } from "@/types/user.type";
 
-export type UserFormErrors = Partial<Record<keyof UserCreatePayload, string>>;
+export type UserFormErrors = Partial<
+  Record<keyof UserCreatePayload | keyof UserUpdatePayload, string>
+>;
+
+const fullNameRegex = /^([^\W\d_]|\s)+$/u;
+const phoneRegex = /^(0|\+84)[35789][0-9]{8}$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateFullName(fullName?: string): string | undefined {
+  const value = fullName?.trim();
+
+  if (!value) return "Họ tên không được để trống";
+  if (value.length < 2) return "Họ tên tối thiểu 2 ký tự";
+  if (!fullNameRegex.test(value)) {
+    return "Họ tên không được chứa số hoặc ký tự đặc biệt";
+  }
+
+  return undefined;
+}
 
 export function validateUserCreate(values: UserCreatePayload): UserFormErrors {
   const errors: UserFormErrors = {};
 
-  if (!values.full_name?.trim()) {
-    errors.full_name = "Họ tên không được để trống";
-  }
+  const fullNameError = validateFullName(values.full_name);
+  if (fullNameError) errors.full_name = fullNameError;
 
-  if (!values.username?.trim()) {
-    errors.username = "Tên đăng nhập không được để trống";
-  } else if (!/^[a-zA-Z0-9_]{3,50}$/.test(values.username)) {
-    errors.username = "Chỉ dùng chữ, số, gạch dưới, tối thiểu 3 ký tự";
-  }
-
-  if (!values.password) {
-    errors.password = "Mật khẩu không được để trống";
-  } else if (values.password.length < 6) {
-    errors.password = "Mật khẩu tối thiểu 6 ký tự";
-  }
-
-  if (values.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.email)) {
+  if (values.email && !emailRegex.test(values.email)) {
     errors.email = "Email không hợp lệ";
   }
 
-  if (values.phone && !/^(0[3-9]\d{8})$/.test(values.phone)) {
-    errors.phone = "Số điện thoại không hợp lệ";
+  if (values.phone && !phoneRegex.test(values.phone)) {
+    errors.phone = "Số điện thoại không đúng định dạng";
+  }
+
+  if (!values.role_id) {
+    errors.role_id = "Vui lòng chọn 1 vai trò";
+  }
+
+  return errors;
+}
+
+export function validateUserUpdate(values: UserUpdatePayload): UserFormErrors {
+  const errors: UserFormErrors = {};
+
+  const fullNameError = validateFullName(values.full_name);
+  if (fullNameError) errors.full_name = fullNameError;
+
+  if (values.email && !emailRegex.test(values.email)) {
+    errors.email = "Email không hợp lệ";
+  }
+
+  if (values.phone && !phoneRegex.test(values.phone)) {
+    errors.phone = "Số điện thoại không đúng định dạng";
+  }
+
+  if (!values.role_id) {
+    errors.role_id = "Vui lòng chọn 1 vai trò";
+  }
+
+  if (values.status && !["active", "inactive"].includes(values.status)) {
+    errors.status = "Trạng thái không hợp lệ";
   }
 
   return errors;

@@ -32,6 +32,7 @@ class UserCreate(BaseModel):
             raise ValueError("Họ tên không được chứa số hoặc ký tự đặc biệt.")
         return clean_name
 
+
 # Hứng dữ liệu khi Admin sửa thông tin
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
