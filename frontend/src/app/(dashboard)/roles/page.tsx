@@ -15,7 +15,6 @@ import {
   createRole,
   updateRole,
   deleteRole,
-  getRolePermissions,
 } from "@/services/role.service";
 import type {
   Role,
@@ -155,17 +154,14 @@ export default function RolesPage() {
     }
   }
 
-  async function openEdit(role: Role) {
-    try {
-      const permIds = await getRolePermissions(role.id);
-      setEditPermIds(permIds);
-      setEditTarget(role);
-    } catch (e: unknown) {
-      showToast(
-        "error",
-        e instanceof Error ? e.message : "Không lấy được quyền của nhóm này",
-      );
-    }
+  function openEdit(role: Role) {
+    const permIds =
+      role.permission_ids ??
+      role.permissions?.map((permission) => permission.id) ??
+      [];
+
+    setEditPermIds(permIds);
+    setEditTarget(role);
   }
 
   function goToPage(nextPage: number) {

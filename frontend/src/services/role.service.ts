@@ -13,76 +13,6 @@ import type {
 } from "@/types/permission.type";
 import type { PaginatedResponse } from "@/types/customer.type";
 
-// ─── Mock Permissions tạm thời vì BE chưa có Permission API ───────────────────
-const MOCK_PERMISSIONS: Permission[] = [
-  {
-    id: 1,
-    permission_code: "dashboard.view",
-    permission_name: "Xem dashboard",
-    module_group: "Dashboard",
-  },
-  {
-    id: 2,
-    permission_code: "users.view",
-    permission_name: "Xem danh sách nhân viên",
-    module_group: "Nhân viên",
-  },
-  {
-    id: 3,
-    permission_code: "users.create",
-    permission_name: "Thêm nhân viên",
-    module_group: "Nhân viên",
-  },
-  {
-    id: 4,
-    permission_code: "users.update",
-    permission_name: "Cập nhật nhân viên",
-    module_group: "Nhân viên",
-  },
-  {
-    id: 5,
-    permission_code: "users.delete",
-    permission_name: "Xóa nhân viên",
-    module_group: "Nhân viên",
-  },
-  {
-    id: 6,
-    permission_code: "roles.view",
-    permission_name: "Xem nhóm quyền",
-    module_group: "Phân quyền",
-  },
-  {
-    id: 7,
-    permission_code: "roles.create",
-    permission_name: "Thêm nhóm quyền",
-    module_group: "Phân quyền",
-  },
-  {
-    id: 8,
-    permission_code: "roles.update",
-    permission_name: "Cập nhật nhóm quyền",
-    module_group: "Phân quyền",
-  },
-  {
-    id: 9,
-    permission_code: "roles.delete",
-    permission_name: "Xóa nhóm quyền",
-    module_group: "Phân quyền",
-  },
-  {
-    id: 10,
-    permission_code: "customers.view",
-    permission_name: "Xem khách hàng",
-    module_group: "Khách hàng",
-  },
-  {
-    id: 11,
-    permission_code: "customers.update",
-    permission_name: "Cập nhật khách hàng",
-    module_group: "Khách hàng",
-  },
-];
-
 // ─── List roles: search + pagination ─────────────────────────────────────────
 // BE: GET /roles/full-details?q=&skip=&limit=
 export async function getRoles(
@@ -128,9 +58,6 @@ export async function createRole(payload: RoleCreatePayload): Promise<Role> {
     role_code: payload.role_code.trim().toLowerCase(),
     role_name: payload.role_name.trim(),
     description: payload.description?.trim() || null,
-
-    // Chú ý: permission_ids phải tồn tại thật trong DB BE.
-    // Nếu permission mock không khớp DB thì BE sẽ báo permission không tồn tại.
     permission_ids: payload.permission_ids ?? [],
   });
 }
@@ -142,7 +69,6 @@ export async function updateRole(
   payload: RoleUpdatePayload,
 ): Promise<Role> {
   return http.patch<Role>(`/roles/${id}`, {
-    ...payload,
     role_code: payload.role_code?.trim().toLowerCase(),
     role_name: payload.role_name?.trim(),
     description:
@@ -159,15 +85,21 @@ export async function deleteRole(id: number): Promise<null> {
   return http.delete<null>(`/roles/${id}`);
 }
 
-// ─── Permissions: mock tạm ───────────────────────────────────────────────────
+// ─── Permissions: gọi API thật từ BE ─────────────────────────────────────────
+// BE: GET /permissions/
 export async function getAllPermissions(): Promise<Permission[]> {
-  return MOCK_PERMISSIONS;
+  const response = await http.raw.get("/permissions/");
+  const json = response.data;
+
+  return Array.isArray(json.data) ? json.data : [];
 }
 
 export async function getPermissionsByModule(): Promise<PermissionsByModule> {
-  return MOCK_PERMISSIONS.reduce<PermissionsByModule>((acc, permission) => {
+  const permissions = await getAllPermissions();
+
+  return permissions.reduce<PermissionsByModule>((acc, permission) => {
     const moduleKey =
-      permission.module_group || permission.module_name || "Khác";
+      permission.module_name || permission.module_group || "Khác";
 
     if (!acc[moduleKey]) acc[moduleKey] = [];
     acc[moduleKey].push(permission);

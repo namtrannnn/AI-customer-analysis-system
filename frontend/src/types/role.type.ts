@@ -9,7 +9,12 @@ export interface RolePermission {
   id: number;
   permission_code: string;
   permission_name: string;
-  module_group: string;
+
+  // BE mới dùng module_name
+  module_name?: string;
+
+  // Giữ optional để tương thích nếu role/full-details vẫn trả module_group
+  module_group?: string;
 }
 
 export interface Role {
@@ -20,10 +25,8 @@ export interface Role {
   created_at: string;
   updated_at?: string | null;
 
-  // Dùng cho API GET /roles/{role_id}
   permission_ids?: number[];
 
-  // Dùng cho API GET /roles/full-details
   users?: RoleUser[];
   permissions?: RolePermission[];
 }

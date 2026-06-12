@@ -1,13 +1,13 @@
-// src/types/permission.type.ts
-
 export interface Permission {
   id: number;
   permission_code: string;
   permission_name: string;
-  module_group: string;
+  module_name: string;
+  description: string | null;
+  created_at: string;
 
-  // Dự phòng nếu BE sau này đặt tên module_name
-  module_name?: string;
+  // Optional để tương thích code cũ nếu có chỗ còn dùng module_group
+  module_group?: string;
 }
 
 export type PermissionsByModule = Record<string, Permission[]>;
