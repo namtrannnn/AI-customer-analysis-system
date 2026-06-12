@@ -7,7 +7,7 @@ from app.schemas.response_schema import StandardResponse
 from app.services import customer_service as services
 from app.database.session import get_db 
 from app.utils.response import success_response
-from app.core.dependencies import get_current_user
+from app.core.dependencies import RequirePermission
 
 router = APIRouter(
     prefix="/api/customers", 
@@ -23,7 +23,11 @@ def create_anonymous(payload: schemas.AnonymousCreate, db: Session = Depends(get
 
 # CUS-API-01: API cho Nhân viên thêm khách hàng chính thức
 @router.post("/", response_model=StandardResponse[schemas.CustomerResponse], status_code=status.HTTP_201_CREATED)
-def create_customer(payload: schemas.CustomerCreate, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def create_customer(
+    payload: schemas.CustomerCreate, 
+    db: Session = Depends(get_db), 
+    current_user = Depends(RequirePermission("customer.create"))
+):
     """API tạo khách hàng. Tự động xử lý liên kết khuôn mặt nếu có truyền person_profile_id"""
     customer = services.create_customer(db=db, payload=payload)
     return success_response(data=customer, message="Tạo khách hàng mới thành công")
@@ -37,7 +41,7 @@ def get_customers(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(RequirePermission("customer.view"))
 ):
     customers = services.get_list_customers(
         db=db, 
@@ -65,7 +69,11 @@ def get_customers(
 
 # CUS-API-03: Xem chi tiết khách hàng
 @router.get("/{customer_id}", response_model=StandardResponse[schemas.CustomerResponse])
-def get_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def get_customer(
+    customer_id: int, 
+    db: Session = Depends(get_db), 
+    current_user = Depends(RequirePermission("customer.view"))
+):
     customer = services.get_customer_by_id(db=db, customer_id=customer_id)
     return success_response(data=customer, message="Lấy chi tiết khách hàng thành công")
 
@@ -74,14 +82,18 @@ def get_customer(customer_id: int, db: Session = Depends(get_db), current_user =
 def update_customer(
     customer_id: int, customer: schemas.CustomerUpdate, 
     db: Session = Depends(get_db), 
-    current_user = Depends(get_current_user)
+    current_user = Depends(RequirePermission("customer.update"))
 ):
     updated_customer = services.update_customer(db=db, customer_id=customer_id, payload=customer)
     return success_response(data=updated_customer, message="Cập nhật thông tin khách hàng thành công")
 
 # CUS-API-05: API xóa mềm khách hàng
 @router.delete("/{customer_id}", response_model=StandardResponse[Any], status_code=status.HTTP_200_OK)
-def delete_customer(customer_id: int, db: Session = Depends(get_db), current_user = Depends(get_current_user)):
+def delete_customer(
+    customer_id: int,
+    db: Session = Depends(get_db), 
+    current_user = Depends(RequirePermission("customer.delete"))
+):
     # Service soft_delete_customer đã thực hiện xóa mềm
     services.soft_delete_customer(db=db, customer_id=customer_id)
     return success_response(data=None, message="Xóa mềm khách hàng thành công")
@@ -106,7 +118,7 @@ def get_visit_history(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(RequirePermission("customer.view"))
 ):
     visits = services.get_customer_visit_history(db=db, customer_id=customer_id, skip=skip, limit=limit)
     total = len(visits)
@@ -123,7 +135,7 @@ def get_order_history(
     skip: int = 0, 
     limit: int = 100, 
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user = Depends(RequirePermission("customer.view"))
 ):
     orders = services.get_customer_order_history(db=db, customer_id=customer_id, skip=skip, limit=limit)
     total = len(orders)

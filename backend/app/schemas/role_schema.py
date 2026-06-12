@@ -44,7 +44,6 @@ class RoleResponse(BaseModel):
     description: str | None
     permission_ids: list[int] = [] 
     created_at: datetime
-    updated_at: datetime | None
 
     model_config = {"from_attributes": True}
 
