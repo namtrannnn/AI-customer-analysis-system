@@ -7,7 +7,7 @@ from app.schemas.response_schema import StandardResponse
 from app.services import user_service as services
 from app.database.session import get_db 
 from app.utils.response import success_response
-from app.core.dependencies import get_admin_user
+from app.core.dependencies import get_admin_user, get_current_user
 
 router = APIRouter(
     prefix="/api/users", 
@@ -16,7 +16,11 @@ router = APIRouter(
 
 # CUS-API-01: API thêm user
 @router.post("/", response_model=StandardResponse[schemas.UserCreateResponse], status_code=status.HTTP_201_CREATED)
-def create_user(payload: schemas.UserCreate, db: Session = Depends(get_db)):
+def create_user(
+    payload: schemas.UserCreate, 
+    db: Session = Depends(get_db),
+    admin_user = Depends(get_admin_user) # BẢO MẬT: Chỉ Admin mới được tạo nhân sự
+):
     
     result = services.create_user(db=db, payload=payload)
     new_user = result["user"]
@@ -40,9 +44,9 @@ def get_users(
     status_param: str | None = Query(default=None, alias="status", description="Trạng thái cần lọc: active hoặc inactive"),
     skip: int = 0, 
     limit: int = 100, 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user) # BẢO MẬT: Bắt buộc đăng nhập
 ):
-    """API lấy danh sách người dùng, có hỗ trợ tìm kiếm, lọc và phân trang"""
     users = services.get_list_users(
         db=db, 
         search_query=q, 
@@ -67,16 +71,23 @@ def get_users(
 
 # CUS-API-03: API xem chi tiết user
 @router.get("/{user_id}", response_model=StandardResponse[schemas.UserResponse])
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    """API lấy chi tiết thông tin người dùng bằng ID"""
+def get_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user) # BẢO MẬT
+):
     user = services.get_user_by_id(db=db, user_id=user_id)
     return success_response(data=user, message="Lấy chi tiết người dùng thành công")
 
 
 # CUS-API-4: API cập nhật thông tin user
 @router.patch("/{user_id}", response_model=StandardResponse[schemas.UserResponse])
-def update_user(user_id: int, payload: schemas.UserUpdate, db: Session = Depends(get_db)):
-    """API cập nhật thông tin người dùng (truyền lên các field cần update)"""
+def update_user(
+    user_id: int, 
+    payload: schemas.UserUpdate, 
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user) # BẢO MẬT
+):
     updated_user = services.update_user(db=db, user_id=user_id, payload=payload)
     return success_response(
         data=updated_user, 
@@ -91,14 +102,8 @@ def delete_user(
     admin_user = Depends(get_admin_user) 
 ):
     """API xóa mềm người dùng (Yêu cầu quyền Admin)"""
-    
-    if admin_user.id == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Bạn không thể tự xóa tài khoản của chính mình."
-        )
-        
-    services.soft_delete_user(db=db, user_id=user_id)
+  
+    services.soft_delete_user(db=db, user_id=user_id, admin_id=admin_user.id)
     return success_response(
         data=None, 
         message="Xóa người dùng thành công"
@@ -109,7 +114,8 @@ def delete_user(
 def upload_avatar(
     user_id: int, 
     file: UploadFile = File(...), 
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user) # BẢO MẬT
 ):
     """API tải lên và cập nhật ảnh đại diện của người dùng (tối đa 3MB)"""
     user = services.upload_user_avatar(db=db, user_id=user_id, file=file)
