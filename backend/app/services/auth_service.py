@@ -6,10 +6,13 @@ from app.schemas.auth_schema import LoginRequest, ChangePasswordRequest
 from app.core.security import verify_password, get_password_hash, create_access_token
 from app.utils.helpers import generate_random_password
 from app.models.user_role import UserRole
+from app.models.permission import Permission
+from app.models.role import Role
+from app.models.role_permission import RolePermission
 
 # AUTH-API-01: Đăng nhập
 def authenticate_user(db: Session, payload: LoginRequest) -> dict:
-    # 1. Tìm user và kiểm tra trạng thái
+    # Tìm user và kiểm tra trạng thái
     user = db.query(User).filter(User.username == payload.username, User.status != "deleted").first()
     
     if not user or not verify_password(payload.password, user.password_hash):
@@ -31,31 +34,56 @@ def authenticate_user(db: Session, payload: LoginRequest) -> dict:
         db.commit()
         db.refresh(user) # Refresh lại để lấy last_login_at mới nhất
 
-    # 2. Lấy danh sách Role từ bảng phân quyền
-    user_roles = db.query(UserRole).filter(UserRole.user_id == user.id).all()
-    role_ids = [role.role_id for role in user_roles]
-
-    # 3. Tạo Token
+    # Tạo Token liên kết
     access_token = create_access_token(data={"sub": user.username, "id": user.id})
 
-    # 4. Trả về toàn bộ thông tin chi tiết
+    # Truy vấn Duy nhất 1 lần để lấy mối quan hệ Role-User
+    user_role_assoc = db.query(UserRole).filter(UserRole.user_id == user.id).first()
+    
+    role_data = None
+    permissions_list = []
+
+    if user_role_assoc:
+        role = db.query(Role).filter(Role.id == user_role_assoc.role_id).first()
+        if role:
+            # Gói thông tin Role thành cấu trúc khớp với RoleLoginInfo Schema
+            role_data = {
+                "id": role.id,
+                "role_code": role.role_code,
+                "role_name": role.role_name
+            }
+            
+            # Truy vấn danh sách chuỗi mã quyền phẳng (Flat list of string permission codes)
+            perms = db.query(Permission.permission_code).join(
+                RolePermission, RolePermission.permission_id == Permission.id
+            ).filter(
+                RolePermission.role_id == role.id
+            ).all()
+            
+            permissions_list = [p[0] for p in perms]
+
+    # Đóng gói object user_info đầy đủ trường để khít hoàn toàn với UserLoginInfo Schema
+    user_info_dict = {
+        "id": user.id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "avatar_url": user.avatar_url,
+        "status": user.status,
+        "role": role_data,
+        "permissions": permissions_list,
+        "last_login_at": user.last_login_at, 
+        "created_at": user.created_at,
+        "updated_at": user.updated_at
+    }
+
+    # 5. Trả về kết quả đầu ra sạch sẽ
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "is_first_login": is_first_login,
-        "user_info": {
-            "id": user.id,
-            "full_name": user.full_name,
-            "username": user.username,
-            "email": user.email,
-            "phone": user.phone,
-            "avatar_url": user.avatar_url,
-            "status": user.status,
-            "role_ids": role_ids,
-            "last_login_at": user.last_login_at,
-            "created_at": user.created_at,
-            "updated_at": user.updated_at
-        }
+        "user_info": user_info_dict,
+        "is_first_login": is_first_login
     }
 
 # AUTH-API-02: Đổi mật khẩu (Dùng chung cho lần đầu và bình thường)

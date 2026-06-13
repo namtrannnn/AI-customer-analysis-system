@@ -7,27 +7,6 @@ class LoginRequest(BaseModel):
     username: str = Field(..., description="Tên đăng nhập")
     password: str = Field(..., description="Mật khẩu")
 
-# Định nghĩa thông tin User trả về lúc đăng nhập
-class UserLoginInfo(BaseModel):
-    id: int
-    full_name: str
-    username: str
-    email: EmailStr | str
-    phone: str | None
-    avatar_url: str | None
-    status: str
-    role_id: int  # Danh sách vai trò để Frontend phân quyền UI
-    last_login_at: datetime | None
-    created_at: datetime
-    updated_at: datetime | None
-
-# Định nghĩa toàn bộ cục Data của API Login
-class LoginResponseData(BaseModel):
-    access_token: str
-    token_type: str
-    is_first_login: bool
-    user_info: UserLoginInfo
-
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(..., description="Mật khẩu hiện tại")
     # Đặt độ dài tối thiểu là 8 để tăng cường bảo mật
@@ -60,3 +39,29 @@ class ChangePasswordRequest(BaseModel):
         if "new_password" in info.data and v != info.data["new_password"]:
             raise ValueError("Mật khẩu xác nhận không khớp với mật khẩu mới.")
         return v
+   
+# CÁC SCHEMA DÀNH CHO OUTPUT ĐĂNG NHẬP
+class RoleLoginInfo(BaseModel):
+    id: int
+    role_code: str
+    role_name: str
+
+class UserLoginInfo(BaseModel):
+    id: int
+    full_name: str
+    username: str
+    email: EmailStr | str | None = None
+    phone: str | None = None
+    avatar_url: str | None = None
+    status: str
+    role: RoleLoginInfo | None = None
+    permissions: list[str] = []
+    last_login_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+class LoginResponseData(BaseModel):
+    access_token: str
+    token_type: str
+    is_first_login: bool
+    user_info: UserLoginInfo 
