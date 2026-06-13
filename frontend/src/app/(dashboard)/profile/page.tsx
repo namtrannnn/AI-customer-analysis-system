@@ -297,9 +297,11 @@ export default function ProfilePage() {
   }
 
   const currentStatus = statusConfig[user.status] ?? statusConfig.inactive;
-  const roleLabel = user.role_id
-    ? (ROLE_LABEL_MAP[user.role_id] ?? `Role #${user.role_id}`)
-    : (authUser?.roles?.[0] ?? "Chưa gán quyền");
+  const roleLabel =
+    authUser?.role?.role_name ??
+    (user.role_id
+      ? (ROLE_LABEL_MAP[user.role_id] ?? `Role #${user.role_id}`)
+      : "Chưa gán quyền");
 
   return (
     <div className="space-y-6 pb-24">

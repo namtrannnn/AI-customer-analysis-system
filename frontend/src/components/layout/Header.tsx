@@ -153,7 +153,7 @@ function UserMenu({
           </p>
 
           <p className="mt-1 truncate text-[11px] font-medium text-slate-400">
-            {user?.roles?.[0] ?? "Member"}
+            {user?.role?.role_name ?? "Member"}
           </p>
         </div>
 

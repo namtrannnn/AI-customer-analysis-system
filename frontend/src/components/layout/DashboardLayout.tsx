@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { getToken } from "@/utils/storage";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -17,7 +18,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [checkingAuth, setCheckingAuth] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = getToken();
 
     if (!token) {
       router.replace("/login?reason=unauthorized");
