@@ -8,8 +8,24 @@ import type {
 } from "@/types/auth.type";
 import { setToken, removeToken, USER_KEY } from "@/utils/storage";
 
+// export async function login(payload: LoginRequest): Promise<LoginResponse> {
+//   const response = await http.post<LoginResponse>("/auth/login", payload);
+
+//   setToken(response.access_token);
+
+//   if (typeof window !== "undefined") {
+//     localStorage.setItem(USER_KEY, JSON.stringify(response.user_info));
+//   }
+
+//   return response;
+// }
+
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
   const response = await http.post<LoginResponse>("/auth/login", payload);
+
+  console.log("LOGIN RESPONSE:", response);
+  console.log("USER INFO:", response.user_info);
+  console.log("USER PERMISSIONS:", response.user_info?.permissions);
 
   setToken(response.access_token);
 

@@ -32,8 +32,8 @@ def authenticate_user(db: Session, payload: LoginRequest) -> dict:
         db.refresh(user) # Refresh lại để lấy last_login_at mới nhất
 
     # 2. Lấy danh sách Role từ bảng phân quyền
-    user_roles = db.query(UserRole).filter(UserRole.user_id == user.id).all()
-    role_ids = [role.role_id for role in user_roles]
+    current_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
+    user.role_id = current_role.role_id if current_role else None
 
     # 3. Tạo Token
     access_token = create_access_token(data={"sub": user.username, "id": user.id})
@@ -43,19 +43,7 @@ def authenticate_user(db: Session, payload: LoginRequest) -> dict:
         "access_token": access_token,
         "token_type": "bearer",
         "is_first_login": is_first_login,
-        "user_info": {
-            "id": user.id,
-            "full_name": user.full_name,
-            "username": user.username,
-            "email": user.email,
-            "phone": user.phone,
-            "avatar_url": user.avatar_url,
-            "status": user.status,
-            "role_ids": role_ids,
-            "last_login_at": user.last_login_at,
-            "created_at": user.created_at,
-            "updated_at": user.updated_at
-        }
+        "user_info": user
     }
 
 # AUTH-API-02: Đổi mật khẩu (Dùng chung cho lần đầu và bình thường)
