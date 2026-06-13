@@ -25,14 +25,15 @@ import type {
 } from "@/types/customer.type";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/components/ui/ToastProvider";
+import { usePermission } from "@/hooks/usePermission";
 import {
   Users,
   UserCheck,
   UserRound,
   Plus,
   AlertTriangle,
-  Check,
   AlertCircle,
+  LockKeyhole,
 } from "lucide-react";
 
 const DEFAULT_FILTER: CustomerFilterParams = {
@@ -100,7 +101,35 @@ function MiniStat({
   );
 }
 
+function ForbiddenCustomersPage() {
+  return (
+    <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-4">
+      <div className="max-w-md rounded-3xl border border-red-100 bg-white p-8 text-center shadow-sm dark:border-red-500/20 dark:bg-slate-900">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300">
+          <LockKeyhole className="h-7 w-7" />
+        </div>
+
+        <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
+          Không có quyền truy cập
+        </h2>
+
+        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+          Bạn không có quyền xem danh sách khách hàng. Vui lòng liên hệ quản trị
+          viên nếu cần được cấp quyền.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function CustomersPage() {
+  const { hasPermission } = usePermission();
+
+  const canViewCustomer = hasPermission("customer.view");
+  const canCreateCustomer = hasPermission("customer.create");
+  const canUpdateCustomer = hasPermission("customer.update");
+  const canDeleteCustomer = hasPermission("customer.delete");
+
   const [result, setResult] = useState<PaginatedResponse<Customer> | null>(
     null,
   );
@@ -116,6 +145,11 @@ export default function CustomersPage() {
   const debouncedSearch = useDebounce(filter.search, 500);
 
   const fetchData = useCallback(async () => {
+    if (!canViewCustomer) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -136,6 +170,7 @@ export default function CustomersPage() {
       setLoading(false);
     }
   }, [
+    canViewCustomer,
     filter.page,
     filter.limit,
     filter.status,
@@ -167,6 +202,11 @@ export default function CustomersPage() {
   }
 
   async function handleCreate(payload: CustomerCreatePayload) {
+    if (!canCreateCustomer) {
+      toast.error("Bạn không có quyền thêm khách hàng.");
+      return;
+    }
+
     try {
       const cleanPayload: CustomerCreatePayload = {
         full_name: payload.full_name.trim(),
@@ -207,6 +247,11 @@ export default function CustomersPage() {
   async function handleUpdate(payload: CustomerUpdatePayload) {
     if (!editTarget) return;
 
+    if (!canUpdateCustomer) {
+      toast.error("Bạn không có quyền cập nhật khách hàng.");
+      return;
+    }
+
     try {
       await updateCustomer(editTarget.id, payload);
       toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
@@ -219,6 +264,11 @@ export default function CustomersPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+
+    if (!canDeleteCustomer) {
+      toast.error("Bạn không có quyền xóa khách hàng.");
+      return;
+    }
 
     setDeleteLoading(true);
 
@@ -260,6 +310,10 @@ export default function CustomersPage() {
   ).length;
 
   const hasFilter = Boolean(filter.search || filter.status || filter.gender);
+
+  if (!canViewCustomer) {
+    return <ForbiddenCustomersPage />;
+  }
 
   return (
     <div className="space-y-5">
@@ -320,19 +374,21 @@ export default function CustomersPage() {
               </div>
 
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Tìm, lọc và thêm khách hàng mới.
+                Tìm, lọc và quản lý khách hàng.
               </p>
             </div>
 
-            <div className="flex shrink-0 gap-2">
-              <Button
-                size="base"
-                icon={<Plus className="h-4 w-4" />}
-                onClick={() => setAddOpen(true)}
-              >
-                Thêm khách hàng
-              </Button>
-            </div>
+            {canCreateCustomer && (
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="base"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => setAddOpen(true)}
+                >
+                  Thêm khách hàng
+                </Button>
+              </div>
+            )}
           </div>
 
           <CustomerFilter
@@ -392,6 +448,8 @@ export default function CustomersPage() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
               <CustomerTable
                 customers={result?.data ?? []}
+                canEdit={canUpdateCustomer}
+                canDelete={canDeleteCustomer}
                 onEdit={(c) => setEditTarget(c)}
                 onDelete={(c) => setDeleteTarget(c)}
               />
@@ -468,26 +526,32 @@ export default function CustomersPage() {
         )}
       </section>
 
-      <CustomerAddModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSubmit={handleCreate}
-      />
+      {canCreateCustomer && (
+        <CustomerAddModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onSubmit={handleCreate}
+        />
+      )}
 
-      <CustomerEditModal
-        open={!!editTarget}
-        onClose={() => setEditTarget(null)}
-        customer={editTarget}
-        onSubmit={handleUpdate}
-      />
+      {canUpdateCustomer && (
+        <CustomerEditModal
+          open={!!editTarget}
+          onClose={() => setEditTarget(null)}
+          customer={editTarget}
+          onSubmit={handleUpdate}
+        />
+      )}
 
-      <CustomerDeleteModal
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        customer={deleteTarget}
-        onConfirm={handleDelete}
-        loading={deleteLoading}
-      />
+      {canDeleteCustomer && (
+        <CustomerDeleteModal
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          customer={deleteTarget}
+          onConfirm={handleDelete}
+          loading={deleteLoading}
+        />
+      )}
     </div>
   );
 }

@@ -3,6 +3,12 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface AuthRole {
+  id: number;
+  role_code: string;
+  role_name: string;
+}
+
 export interface LoginResponse {
   access_token: string;
   token_type: string;
@@ -18,8 +24,10 @@ export interface AuthUser {
   phone?: string | null;
   avatar_url?: string | null;
   status: string;
-  role_ids: number[];
-  roles?: string[];
+
+  role: AuthRole | null;
+  permissions: string[];
+
   last_login_at?: string | null;
   created_at?: string;
   updated_at?: string;

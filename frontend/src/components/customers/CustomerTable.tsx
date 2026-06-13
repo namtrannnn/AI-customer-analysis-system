@@ -11,6 +11,8 @@ import EmptyState from "@/components/ui/EmptyState";
 
 interface CustomerTableProps {
   customers: Customer[];
+  canEdit?: boolean;
+  canDelete?: boolean;
   onEdit: (customer: Customer) => void;
   onDelete: (customer: Customer) => void;
 }
@@ -55,6 +57,8 @@ function getCustomerStatus(status?: string | null) {
 
 export default function CustomerTable({
   customers,
+  canEdit = false,
+  canDelete = false,
   onEdit,
   onDelete,
 }: CustomerTableProps) {
@@ -177,24 +181,28 @@ export default function CustomerTable({
                       </Button>
                     </Link>
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEdit(c)}
-                      title="Chỉnh sửa"
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onEdit(c)}
+                        title="Chỉnh sửa"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
 
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
-                      onClick={() => onDelete(c)}
-                      title="Xóa"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {canDelete && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-400 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                        onClick={() => onDelete(c)}
+                        title="Xóa"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>
