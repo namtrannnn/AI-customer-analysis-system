@@ -1,55 +1,48 @@
-import { delay } from "./api";
-import { MOCK_USERS } from "@/mocks/users.mock";
-import type { LoginRequest, LoginResponse } from "@/types/auth.type";
+import { http } from "@/lib/http";
+
+import type {
+  LoginRequest,
+  LoginResponse,
+  ChangePasswordRequest,
+  AuthUser,
+} from "@/types/auth.type";
 import { setToken, removeToken, USER_KEY } from "@/utils/storage";
 
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
-  await delay(600);
+  const response = await http.post<LoginResponse>("/auth/login", payload);
 
-  // Tìm user trong mock (password không check — mock)
-  const user = MOCK_USERS.find(
-    (u) => u.username === payload.username && u.status === "active"
-  );
+  setToken(response.access_token);
 
-  if (!user) {
-    throw new Error("Tên đăng nhập hoặc mật khẩu không đúng");
-  }
-
-  const token = `mock_token_${user.id}_${Date.now()}`;
-
-  const response: LoginResponse = {
-    access_token: token,
-    token_type: "bearer",
-    user: {
-      id: user.id,
-      full_name: user.full_name,
-      username: user.username,
-      email: user.email,
-      status: user.status,
-      roles: user.roles.map((r) => r.role_code),
-    },
-  };
-
-  setToken(token);
   if (typeof window !== "undefined") {
-    localStorage.setItem(USER_KEY, JSON.stringify(response.user));
+    localStorage.setItem(USER_KEY, JSON.stringify(response.user_info));
   }
 
   return response;
+}
 
-  // ── Khi có backend ──
-  // return http.post<LoginResponse>("/auth/login", payload);
+export async function changePassword(
+  payload: ChangePasswordRequest,
+): Promise<void> {
+  await http.post<null>("/auth/change-password", payload);
 }
 
 export async function logout(): Promise<void> {
-  await delay(200);
-  removeToken();
-  // ── Khi có backend ──
-  // await http.post("/auth/logout", {});
+  try {
+    await http.post<null>("/auth/logout", {});
+  } catch {
+    // BE logout hiện tại chưa xử lý blacklist token nên lỗi cũng vẫn cho FE logout local
+  } finally {
+    removeToken();
+
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(USER_KEY);
+    }
+  }
 }
 
-export function getCurrentUser() {
+export function getCurrentUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
+
   try {
     const raw = localStorage.getItem(USER_KEY);
     return raw ? JSON.parse(raw) : null;

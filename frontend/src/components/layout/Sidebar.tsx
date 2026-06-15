@@ -9,11 +9,11 @@ import {
   LayoutDashboard,
   LockKeyhole,
   ShieldCheck,
-  Sparkles,
   Users,
   UserRoundCog,
 } from "lucide-react";
 import { useIsDark } from "@/hooks/useIsDark";
+import { usePermission } from "@/hooks/usePermission";
 
 interface SidebarProps {
   collapsed: boolean;
@@ -42,36 +42,47 @@ const menuItems = [
     href: "/dashboard",
     icon: LayoutDashboard,
     desc: "Dashboard",
+    permission: null,
   },
   {
     label: "Khách hàng",
     href: "/customers",
     icon: Users,
     desc: "Customer data",
+    permission: "customer.view",
   },
   {
     label: "Người dùng",
     href: "/users",
     icon: UserRoundCog,
     desc: "Accounts",
+    permission: "user.view",
   },
   {
     label: "Nhóm quyền",
     href: "/roles",
     icon: ShieldCheck,
     desc: "Roles",
+    permission: "role.view",
   },
   {
     label: "Phân quyền",
     href: "/permissions",
     icon: LockKeyhole,
     desc: "Permissions",
+    permission: "permission.view",
   },
 ];
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
   const isDark = useIsDark();
+  const { hasPermission } = usePermission();
+
+  const visibleMenuItems = menuItems.filter((item) => {
+    if (!item.permission) return true;
+    return hasPermission(item.permission);
+  });
 
   return (
     <aside
@@ -117,7 +128,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </>
       )}
 
-      {/* Logo + Toggle */}
       <div
         className={`relative flex h-16 shrink-0 items-center ${
           collapsed ? "justify-center px-3" : "gap-3 px-5"
@@ -154,17 +164,18 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           type="button"
           onClick={onToggle}
           aria-label={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-          className={`absolute -right-3 top-5 z-20 flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-300 hover:scale-110 active:scale-95 ${
+          title={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
+          className={`absolute -right-3.5 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-300 hover:scale-105 active:scale-95 ${
             isDark
-              ? "border-white/[0.1] bg-slate-900 text-slate-300 shadow-lg shadow-black/40 hover:bg-blue-600 hover:text-white hover:shadow-blue-500/30"
-              : "border-slate-200 bg-white text-slate-500 shadow-lg shadow-slate-300/70 hover:bg-blue-600 hover:text-white hover:shadow-blue-300/60"
+              ? "border-white/10 bg-slate-950/90 text-slate-300 shadow-lg shadow-black/40 hover:border-blue-400/40 hover:bg-blue-600 hover:text-white"
+              : "border-slate-200 bg-white/95 text-slate-500 shadow-lg shadow-slate-300/70 hover:border-blue-200 hover:bg-blue-600 hover:text-white"
           }`}
         >
           <ChevronLeft
-            className={`h-4 w-4 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+            className={`h-4 w-4 transition-transform duration-300 ${
               collapsed ? "rotate-180" : "rotate-0"
             }`}
-            strokeWidth={2.4}
+            strokeWidth={2.6}
           />
         </button>
       </div>
@@ -234,7 +245,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           collapsed ? "px-3 pt-5" : "px-3"
         }`}
       >
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const active =
             pathname === item.href ||
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
@@ -320,59 +331,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           );
         })}
       </nav>
-
-      {/* Footer */}
-      <div className="relative shrink-0 p-3">
-        {collapsed ? (
-          <div
-            title="System Online"
-            className={`mx-auto flex h-10 w-10 items-center justify-center rounded-xl ${
-              isDark
-                ? "border border-white/[0.08] bg-white/[0.04]"
-                : "border border-slate-200 bg-white/70 shadow-sm"
-            }`}
-          >
-            <Circle className="h-2.5 w-2.5 fill-emerald-400 text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-          </div>
-        ) : (
-          <div
-            className={`rounded-xl p-3 ${
-              isDark
-                ? "border border-white/[0.08] bg-white/[0.03]"
-                : "border border-slate-200 bg-white/70 shadow-sm"
-            }`}
-          >
-            <div className="mb-2.5 flex items-center justify-between">
-              <p
-                className={`text-xs font-semibold ${
-                  isDark ? "text-slate-400" : "text-slate-600"
-                }`}
-              >
-                System health
-              </p>
-              <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-500">
-                Online
-              </span>
-            </div>
-
-            <div
-              className={`h-1.5 overflow-hidden rounded-full ${
-                isDark ? "bg-white/[0.08]" : "bg-slate-200"
-              }`}
-            >
-              <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-blue-500" />
-            </div>
-
-            <p
-              className={`mt-2 text-[10px] ${
-                isDark ? "text-slate-700" : "text-slate-400"
-              }`}
-            >
-              v1.0.0 · Dashboard UI
-            </p>
-          </div>
-        )}
-      </div>
     </aside>
   );
 }
