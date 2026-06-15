@@ -15,8 +15,17 @@ import {
 import type { Role, RoleUpdatePayload } from "@/types/role.type";
 import type { PermissionsByModule } from "@/types/permission.type";
 import { formatDate } from "@/utils/formatDate";
+import { usePermission } from "@/hooks/usePermission";
+import ForbiddenPage from "@/components/ui/ForbiddenPage";
+import { useToast } from "@/components/ui/ToastProvider";
 
 export default function RoleDetailPage() {
+  const { hasPermission } = usePermission();
+  const toast = useToast();
+  const canViewRole = hasPermission("role.view");
+  const canUpdateRole = hasPermission("role.update");
+  const canDeleteRole = hasPermission("role.delete");
+
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const roleId = Number(id);
@@ -31,13 +40,17 @@ export default function RoleDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
-
   useEffect(() => {
-    if (Number.isNaN(roleId)) return;
+    if (!canViewRole) {
+      setLoading(false);
+      return;
+    }
+
+    if (Number.isNaN(roleId)) {
+      setError("ID nhóm quyền không hợp lệ");
+      setLoading(false);
+      return;
+    }
 
     async function fetchData() {
       setLoading(true);
@@ -65,15 +78,15 @@ export default function RoleDetailPage() {
     }
 
     fetchData();
-  }, [roleId]);
-
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
+  }, [roleId, canViewRole]);
 
   async function handleUpdate(payload: RoleUpdatePayload) {
     if (!role) return;
+
+    if (!canUpdateRole) {
+      toast.error("Bạn không có quyền cập nhật nhóm quyền.");
+      return;
+    }
 
     try {
       const updated = await updateRole(role.id, payload);
@@ -92,9 +105,9 @@ export default function RoleDetailPage() {
 
       setAssignedPermIds(nextPermIds);
       setEditOpen(false);
-      showToast("success", "Cập nhật nhóm quyền thành công");
+      toast.success("Cập nhật nhóm quyền thành công");
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Cập nhật thất bại");
+      toast.error(e instanceof Error ? e.message : "Cập nhật thất bại");
       throw e;
     }
   }
@@ -102,18 +115,33 @@ export default function RoleDetailPage() {
   async function handleDelete() {
     if (!role) return;
 
+    if (!canDeleteRole) {
+      toast.error("Bạn không có quyền xóa nhóm quyền.");
+      return;
+    }
+
     setDeleteLoading(true);
 
     try {
       await deleteRole(role.id);
-      showToast("success", `Đã xóa "${role.role_name}"`);
+      toast.success(`Đã xóa "${role.role_name}"`);
       setTimeout(() => router.push("/roles"), 800);
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Xóa thất bại");
+      toast.error(e instanceof Error ? e.message : "Xóa thất bại");
     } finally {
       setDeleteLoading(false);
       setDeleteOpen(false);
     }
+  }
+
+  if (!canViewRole) {
+    return (
+      <ForbiddenPage
+        description="Bạn không có quyền xem chi tiết nhóm quyền. Vui lòng liên hệ quản trị viên nếu cần được cấp quyền."
+        backHref="/roles"
+        backLabel="Quay lại danh sách"
+      />
+    );
   }
 
   if (loading) {
@@ -156,6 +184,7 @@ export default function RoleDetailPage() {
   }
 
   const userCount = role.users?.length ?? 0;
+
   const assignedModules = Object.entries(permsByModule)
     .map(([module, permissions]) => ({
       module,
@@ -171,13 +200,14 @@ export default function RoleDetailPage() {
         <Link href="/roles" className="hover:text-blue-600">
           Nhóm quyền
         </Link>
+
         <span>/</span>
+
         <span className="font-medium text-slate-900 dark:text-slate-100">
           {role.role_name}
         </span>
       </nav>
 
-      {/* Header */}
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:ring-slate-700">
         <div className="border-b border-slate-100 bg-gradient-to-r from-blue-50 via-white to-purple-50 p-6 dark:border-slate-700 dark:from-slate-800 dark:via-slate-800 dark:to-slate-800">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -207,27 +237,32 @@ export default function RoleDetailPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setEditOpen(true)}
-              >
-                Chỉnh sửa
-              </Button>
+            {(canUpdateRole || canDeleteRole) && (
+              <div className="flex gap-2">
+                {canUpdateRole && (
+                  <Button
+                    variant="secondary"
+                    size="base"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    Chỉnh sửa
+                  </Button>
+                )}
 
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setDeleteOpen(true)}
-              >
-                Xóa
-              </Button>
-            </div>
+                {canDeleteRole && (
+                  <Button
+                    variant="danger"
+                    size="base"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Xóa
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-3">
           <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/30">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -258,7 +293,6 @@ export default function RoleDetailPage() {
         </div>
       </div>
 
-      {/* Content */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-100 dark:bg-slate-800 dark:ring-slate-700">
           <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
@@ -315,11 +349,15 @@ export default function RoleDetailPage() {
                   />
                 </svg>
               </div>
+
               <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
                 Chưa gán quyền nào
               </p>
+
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Bấm “Chỉnh sửa” để cấp quyền cho nhóm này.
+                {canUpdateRole
+                  ? "Bấm “Chỉnh sửa” để cấp quyền cho nhóm này."
+                  : "Bạn không có quyền cập nhật nhóm quyền này."}
               </p>
             </div>
           ) : (
@@ -361,33 +399,24 @@ export default function RoleDetailPage() {
         </div>
       </div>
 
-      <RoleEditModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        role={role}
-        currentPermissionIds={assignedPermIds}
-        onSubmit={handleUpdate}
-      />
+      {canUpdateRole && (
+        <RoleEditModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          role={role}
+          currentPermissionIds={assignedPermIds}
+          onSubmit={handleUpdate}
+        />
+      )}
 
-      <RoleDeleteModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        role={role}
-        onConfirm={handleDelete}
-        loading={deleteLoading}
-      />
-
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-xl px-4 py-3 shadow-lg ${
-            toast.type === "success"
-              ? "bg-green-600 text-white"
-              : "bg-red-600 text-white"
-          }`}
-          role="alert"
-        >
-          <span className="text-sm font-medium">{toast.msg}</span>
-        </div>
+      {canDeleteRole && (
+        <RoleDeleteModal
+          open={deleteOpen}
+          onClose={() => setDeleteOpen(false)}
+          role={role}
+          onConfirm={handleDelete}
+          loading={deleteLoading}
+        />
       )}
     </div>
   );

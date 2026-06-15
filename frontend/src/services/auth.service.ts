@@ -11,10 +11,6 @@ import { setToken, removeToken, USER_KEY } from "@/utils/storage";
 export async function login(payload: LoginRequest): Promise<LoginResponse> {
   const response = await http.post<LoginResponse>("/auth/login", payload);
 
-  console.log("LOGIN RESPONSE:", response);
-  console.log("USER INFO:", response.user_info);
-  console.log("USER PERMISSIONS:", response.user_info?.permissions);
-
   setToken(response.access_token);
 
   if (typeof window !== "undefined") {

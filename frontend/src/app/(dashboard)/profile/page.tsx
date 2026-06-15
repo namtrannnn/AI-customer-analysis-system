@@ -34,6 +34,7 @@ import {
 import { formatDateTime } from "@/utils/formatDate";
 import type { AuthUser } from "@/types/auth.type";
 import type { User, UserStatus, UserUpdatePayload } from "@/types/user.type";
+import { useToast } from "@/components/ui/ToastProvider";
 
 const ROLE_LABEL_MAP: Record<number, string> = {
   1: "Quản trị viên",
@@ -61,6 +62,7 @@ const statusConfig: Record<UserStatus, { label: string; className: string }> = {
 
 export default function ProfilePage() {
   const router = useRouter();
+  const toast = useToast();
 
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -84,11 +86,6 @@ export default function ProfilePage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
-
   const initials = useMemo(() => {
     if (!user?.full_name) return "?";
 
@@ -101,11 +98,6 @@ export default function ProfilePage() {
       .join("")
       .toUpperCase();
   }, [user?.full_name]);
-
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -131,7 +123,7 @@ export default function ProfilePage() {
         setPhone(data.phone ?? "");
       } catch (error) {
         console.error(error);
-        showToast("error", "Không thể tải thông tin tài khoản");
+        toast.error("Không thể tải thông tin tài khoản");
       } finally {
         setLoading(false);
       }
@@ -146,13 +138,13 @@ export default function ProfilePage() {
     if (!file || !user) return;
 
     if (!file.type.startsWith("image/")) {
-      showToast("error", "Vui lòng chọn file hình ảnh");
+      toast.error("Vui lòng chọn file hình ảnh");
       e.target.value = "";
       return;
     }
 
     if (file.size > 3 * 1024 * 1024) {
-      showToast("error", "Ảnh không được vượt quá 3MB");
+      toast.error("Ảnh không được vượt quá 3MB");
       e.target.value = "";
       return;
     }
@@ -163,10 +155,10 @@ export default function ProfilePage() {
       const updated = await uploadUserAvatar(user.id, file);
 
       setUser(updated);
-      showToast("success", "Cập nhật ảnh đại diện thành công");
+      toast.success("Cập nhật ảnh đại diện thành công");
     } catch (error) {
       console.error(error);
-      showToast("error", "Upload ảnh thất bại");
+      toast.error("Upload ảnh thất bại");
     } finally {
       setAvatarUploading(false);
       e.target.value = "";
@@ -209,10 +201,10 @@ export default function ProfilePage() {
       }
 
       setIsEditingProfile(false);
-      showToast("success", "Cập nhật thông tin thành công");
+      toast.success("Cập nhật thông tin thành công");
     } catch (error) {
       console.error(error);
-      showToast("error", "Cập nhật thông tin thất bại");
+      toast.error("Cập nhật thông tin thất bại");
     } finally {
       setSavingProfile(false);
     }
@@ -222,17 +214,17 @@ export default function ProfilePage() {
     e.preventDefault();
 
     if (!currentPassword.trim()) {
-      showToast("error", "Vui lòng nhập mật khẩu hiện tại");
+      toast.error("Vui lòng nhập mật khẩu hiện tại");
       return;
     }
 
     if (newPassword.length < 8) {
-      showToast("error", "Mật khẩu mới phải có ít nhất 8 ký tự");
+      toast.error("Mật khẩu mới phải có ít nhất 8 ký tự");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      showToast("error", "Xác nhận mật khẩu không khớp");
+      toast.error("Xác nhận mật khẩu không khớp");
       return;
     }
 
@@ -246,14 +238,14 @@ export default function ProfilePage() {
       //   confirm_password: confirmPassword,
       // });
 
-      showToast("error", "Chưa gắn API đổi mật khẩu");
+      toast.error("Chưa gắn API đổi mật khẩu");
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
     } catch (error) {
       console.error(error);
-      showToast("error", "Đổi mật khẩu thất bại");
+      toast.error("Đổi mật khẩu thất bại");
     } finally {
       setSavingPassword(false);
     }
@@ -668,17 +660,6 @@ export default function ProfilePage() {
           </form>
         )}
       </section>
-
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 rounded-2xl px-4 py-3 text-sm font-medium text-white shadow-xl ${
-            toast.type === "success" ? "bg-emerald-600" : "bg-red-600"
-          }`}
-          role="alert"
-        >
-          {toast.msg}
-        </div>
-      )}
     </div>
   );
 }

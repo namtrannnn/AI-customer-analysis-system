@@ -33,9 +33,9 @@ import {
   Plus,
   AlertTriangle,
   AlertCircle,
-  LockKeyhole,
 } from "lucide-react";
-
+import ForbiddenPage from "@/components/ui/ForbiddenPage";
+import Pagination from "@/components/ui/Pagination";
 const DEFAULT_FILTER: CustomerFilterParams = {
   search: "",
   status: "",
@@ -96,27 +96,6 @@ function MiniStat({
         >
           {icon}
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ForbiddenCustomersPage() {
-  return (
-    <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-4">
-      <div className="max-w-md rounded-3xl border border-red-100 bg-white p-8 text-center shadow-sm dark:border-red-500/20 dark:bg-slate-900">
-        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300">
-          <LockKeyhole className="h-7 w-7" />
-        </div>
-
-        <h2 className="mt-4 text-lg font-bold text-slate-900 dark:text-white">
-          Không có quyền truy cập
-        </h2>
-
-        <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-          Bạn không có quyền xem danh sách khách hàng. Vui lòng liên hệ quản trị
-          viên nếu cần được cấp quyền.
-        </p>
       </div>
     </div>
   );
@@ -312,7 +291,14 @@ export default function CustomersPage() {
   const hasFilter = Boolean(filter.search || filter.status || filter.gender);
 
   if (!canViewCustomer) {
-    return <ForbiddenCustomersPage />;
+    return (
+      <ForbiddenPage
+        description="Bạn không có quyền xem danh sách khách hàng. Vui lòng liên hệ quản trị viên nếu cần được cấp quyền."
+        backHref="/dashboard"
+        backLabel="Về Dashboard"
+        showHomeButton={false}
+      />
+    );
   }
 
   return (
@@ -457,72 +443,14 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {!loading && !error && totalPages > 1 && (
-          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {result?.total} bản ghi · {totalPages} trang
-            </p>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => updateFilter({ page: page - 1 })}
-                disabled={page <= 1}
-                className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                ← Trước
-              </button>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(
-                  (p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1,
-                )
-                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                  if (
-                    idx > 0 &&
-                    typeof arr[idx - 1] === "number" &&
-                    (p as number) - (arr[idx - 1] as number) > 1
-                  ) {
-                    acc.push("...");
-                  }
-
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, idx) =>
-                  p === "..." ? (
-                    <span
-                      key={`e-${idx}`}
-                      className="px-1.5 text-sm font-bold text-slate-400"
-                    >
-                      …
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      key={p}
-                      onClick={() => updateFilter({ page: p as number })}
-                      className={`flex h-9 min-w-9 items-center justify-center rounded-xl border text-xs font-bold transition ${
-                        page === p
-                          ? "border-blue-600 bg-blue-600 text-white shadow-lg shadow-blue-600/25"
-                          : "border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ),
-                )}
-
-              <button
-                type="button"
-                onClick={() => updateFilter({ page: page + 1 })}
-                disabled={page >= totalPages}
-                className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Sau →
-              </button>
-            </div>
-          </div>
+        {!loading && !error && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={result?.total ?? 0}
+            label="khách hàng"
+            onPageChange={(nextPage) => updateFilter({ page: nextPage })}
+          />
         )}
       </section>
 

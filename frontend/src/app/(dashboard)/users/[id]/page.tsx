@@ -20,6 +20,7 @@ import {
 } from "@/services/user.service";
 import type { User, UserStatus, UserUpdatePayload } from "@/types/user.type";
 import { formatDate, formatDateTime } from "@/utils/formatDate";
+import { usePermission } from "@/hooks/usePermission";
 import {
   ShieldCheck,
   Camera,
@@ -33,6 +34,8 @@ import {
   ArrowLeft,
   Copy,
 } from "lucide-react";
+import ForbiddenPage from "@/components/ui/ForbiddenPage";
+import { useToast } from "@/components/ui/ToastProvider";
 
 const ROLE_LABEL_MAP: Record<number, string> = {
   1: "Quản trị viên",
@@ -65,9 +68,17 @@ const statusConfig: Record<UserStatus, { label: string; className: string }> = {
 };
 
 export default function UserDetailPage() {
+  const { hasPermission } = usePermission();
+  const toast = useToast();
+
+  const canViewUser = hasPermission("user.view");
+  const canUpdateUser = hasPermission("user.update");
+  const canDeleteUser = hasPermission("user.delete");
+
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const userId = Number(id);
+
   const [resetOpen, setResetOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,12 +94,12 @@ export default function UserDetailPage() {
     null,
   );
 
-  const [toast, setToast] = useState<{
-    type: "success" | "error";
-    msg: string;
-  } | null>(null);
-
   async function fetchUser() {
+    if (!canViewUser) {
+      setLoading(false);
+      return;
+    }
+
     if (Number.isNaN(userId)) {
       setError("ID người dùng không hợp lệ");
       setLoading(false);
@@ -111,24 +122,24 @@ export default function UserDetailPage() {
   useEffect(() => {
     fetchUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
-
-  function showToast(type: "success" | "error", msg: string) {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 3000);
-  }
+  }, [userId, canViewUser]);
 
   async function handleUpdate(payload: UserUpdatePayload) {
     if (!user) return;
+
+    if (!canUpdateUser) {
+      toast.error("Bạn không có quyền cập nhật người dùng.");
+      return;
+    }
 
     try {
       const updated = await updateUser(user.id, payload);
 
       setUser(updated);
       setEditOpen(false);
-      showToast("success", "Cập nhật thành công");
+      toast.success("Cập nhật thành công");
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Cập nhật thất bại");
+      toast.error(e instanceof Error ? e.message : "Cập nhật thất bại");
       throw e;
     }
   }
@@ -136,17 +147,22 @@ export default function UserDetailPage() {
   async function handleDelete() {
     if (!user) return;
 
+    if (!canDeleteUser) {
+      toast.error("Bạn không có quyền xóa người dùng.");
+      return;
+    }
+
     setDeleteLoading(true);
 
     try {
       await deleteUser(user.id);
-      showToast("success", `Đã xóa "${user.full_name}"`);
+      toast.success(`Đã xóa "${user.full_name}"`);
 
       setTimeout(() => {
         router.push("/users");
       }, 800);
     } catch (e: unknown) {
-      showToast("error", e instanceof Error ? e.message : "Xóa thất bại");
+      toast.error(e instanceof Error ? e.message : "Xóa thất bại");
     } finally {
       setDeleteLoading(false);
       setDeleteOpen(false);
@@ -154,18 +170,24 @@ export default function UserDetailPage() {
   }
 
   async function handleUploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!canUpdateUser) {
+      toast.error("Bạn không có quyền cập nhật ảnh người dùng.");
+      e.target.value = "";
+      return;
+    }
+
     const file = e.target.files?.[0];
 
     if (!file || !user) return;
 
     if (!file.type.startsWith("image/")) {
-      showToast("error", "Vui lòng chọn file hình ảnh");
+      toast.error("Vui lòng chọn file hình ảnh");
       e.target.value = "";
       return;
     }
 
     if (file.size > 3 * 1024 * 1024) {
-      showToast("error", "Ảnh không được vượt quá 3MB");
+      toast.error("Ảnh không được vượt quá 3MB");
       e.target.value = "";
       return;
     }
@@ -175,12 +197,9 @@ export default function UserDetailPage() {
     try {
       const updated = await uploadUserAvatar(user.id, file);
       setUser(updated);
-      showToast("success", "Cập nhật ảnh đại diện thành công");
+      toast.success("Cập nhật ảnh đại diện thành công");
     } catch (e: unknown) {
-      showToast(
-        "error",
-        e instanceof Error ? e.message : "Upload ảnh thất bại",
-      );
+      toast.error(e instanceof Error ? e.message : "Upload ảnh thất bại");
     } finally {
       setAvatarUploading(false);
       e.target.value = "";
@@ -190,6 +209,11 @@ export default function UserDetailPage() {
   async function handleResetPassword() {
     if (!user) return;
 
+    if (!canUpdateUser) {
+      toast.error("Bạn không có quyền reset mật khẩu người dùng.");
+      return;
+    }
+
     setResetLoading(true);
     setResetPasswordResult(null);
 
@@ -198,12 +222,9 @@ export default function UserDetailPage() {
 
       setResetPasswordResult(result.new_temporary_password);
       setResetOpen(false);
-      showToast("success", "Reset mật khẩu thành công");
+      toast.success("Reset mật khẩu thành công");
     } catch (e: unknown) {
-      showToast(
-        "error",
-        e instanceof Error ? e.message : "Reset mật khẩu thất bại",
-      );
+      toast.error(e instanceof Error ? e.message : "Reset mật khẩu thất bại");
     } finally {
       setResetLoading(false);
     }
@@ -214,10 +235,19 @@ export default function UserDetailPage() {
 
     try {
       await navigator.clipboard.writeText(resetPasswordResult);
-      showToast("success", "Đã copy mật khẩu");
+      toast.success("Đã copy mật khẩu");
     } catch {
-      showToast("error", "Không copy được mật khẩu");
+      toast.error("Không copy được mật khẩu");
     }
+  }
+  if (!canViewUser) {
+    return (
+      <ForbiddenPage
+        description="Bạn không có quyền xem chi tiết người dùng. Vui lòng liên hệ quản trị viên nếu cần được cấp quyền."
+        backHref="/users"
+        backLabel="Quay lại danh sách"
+      />
+    );
   }
 
   if (loading) {
@@ -254,7 +284,6 @@ export default function UserDetailPage() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
       <div className="flex items-center justify-between gap-4">
         <nav className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
           <Link
@@ -273,7 +302,6 @@ export default function UserDetailPage() {
         </nav>
       </div>
 
-      {/* Header card */}
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="px-6 py-6">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -292,6 +320,7 @@ export default function UserDetailPage() {
                     {firstChar}
                   </span>
                 )}
+
                 {avatarUploading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-white">
                     Đang tải...
@@ -325,56 +354,64 @@ export default function UserDetailPage() {
                   )}
                 </div>
 
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
-                    <Camera className="h-4 w-4" />
-                    {avatarUploading ? "Đang upload..." : "Đổi ảnh"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      disabled={avatarUploading}
-                      onChange={handleUploadAvatar}
-                    />
-                  </label>
+                {canUpdateUser && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                      <Camera className="h-4 w-4" />
+                      {avatarUploading ? "Đang upload..." : "Đổi ảnh"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={avatarUploading}
+                        onChange={handleUploadAvatar}
+                      />
+                    </label>
 
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setResetOpen(true)}
-                    loading={resetLoading}
-                  >
-                    <KeyRound className="mr-1 h-4 w-4" />
-                    Reset mật khẩu
-                  </Button>
-                </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setResetOpen(true)}
+                      loading={resetLoading}
+                    >
+                      <KeyRound className="mr-1 h-4 w-4" />
+                      Reset mật khẩu
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setEditOpen(true)}
-              >
-                Chỉnh sửa
-              </Button>
+            {(canUpdateUser || canDeleteUser) && (
+              <div className="flex gap-2">
+                {canUpdateUser && (
+                  <Button
+                    variant="secondary"
+                    size="base"
+                    onClick={() => setEditOpen(true)}
+                  >
+                    Chỉnh sửa
+                  </Button>
+                )}
 
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => setDeleteOpen(true)}
-              >
-                Xóa
-              </Button>
-            </div>
+                {canDeleteUser && (
+                  <Button
+                    variant="danger"
+                    size="base"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    Xóa
+                  </Button>
+                )}
+              </div>
+            )}
           </div>
 
           {resetPasswordResult && (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="font-semibold">Mật khẩu tạm thời mới</p>
+                  <p className="font-bold">Mật khẩu tạm thời mới</p>
                   <p className="mt-1 text-xs opacity-80">
                     Vui lòng lưu lại mật khẩu này. Người dùng cần đổi mật khẩu
                     sau khi đăng nhập.
@@ -382,14 +419,14 @@ export default function UserDetailPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <code className="rounded-xl bg-white/80 px-3 py-2 font-mono text-sm font-bold dark:bg-slate-950/50">
+                  <code className="rounded-xl bg-white/80 px-3 py-2 font-mono text-sm font-bold text-emerald-900 dark:bg-slate-950/50 dark:text-emerald-200">
                     {resetPasswordResult}
                   </code>
 
                   <button
                     type="button"
                     onClick={handleCopyPassword}
-                    className="inline-flex items-center gap-1 rounded-xl border border-amber-300 bg-white/70 px-3 py-2 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 dark:border-amber-500/40 dark:bg-slate-900/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-300 bg-white/70 px-3 py-2 text-xs font-semibold text-emerald-800 transition hover:bg-emerald-100 dark:border-emerald-500/40 dark:bg-slate-900/40 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
                   >
                     <Copy className="h-3.5 w-3.5" />
                     Copy
@@ -401,9 +438,7 @@ export default function UserDetailPage() {
         </div>
       </section>
 
-      {/* Main content */}
       <div className="grid gap-6 xl:grid-cols-3">
-        {/* Account info */}
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800 xl:col-span-2">
           <div className="mb-5 flex items-center justify-between gap-3">
             <div>
@@ -472,7 +507,6 @@ export default function UserDetailPage() {
           </div>
         </section>
 
-        {/* Role card */}
         <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="mb-5 flex items-center justify-between">
             <div>
@@ -517,46 +551,36 @@ export default function UserDetailPage() {
               </div>
             </div>
           )}
-
-          <div className="mt-5 rounded-2xl bg-slate-50 p-4 text-xs text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
-            Mỗi người dùng hiện chỉ được gán một nhóm quyền duy nhất theo cấu
-            hình backend mới.
-          </div>
         </aside>
       </div>
 
-      <UserEditModal
-        open={editOpen}
-        onClose={() => setEditOpen(false)}
-        user={user}
-        onSubmit={handleUpdate}
-      />
+      {canUpdateUser && (
+        <UserEditModal
+          open={editOpen}
+          onClose={() => setEditOpen(false)}
+          user={user}
+          onSubmit={handleUpdate}
+        />
+      )}
 
-      <UserDeleteModal
-        open={deleteOpen}
-        onClose={() => setDeleteOpen(false)}
-        user={user}
-        onConfirm={handleDelete}
-        loading={deleteLoading}
-      />
-      <UserResetPasswordModal
-        open={resetOpen}
-        onClose={() => setResetOpen(false)}
-        user={user}
-        onConfirm={handleResetPassword}
-        loading={resetLoading}
-      />
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 rounded-2xl px-4 py-3 shadow-xl ${
-            toast.type === "success"
-              ? "bg-emerald-600 text-white"
-              : "bg-red-600 text-white"
-          }`}
-          role="alert"
-        >
-          <span className="text-sm font-medium">{toast.msg}</span>
-        </div>
+      {canDeleteUser && (
+        <UserDeleteModal
+          open={deleteOpen}
+          onClose={() => setDeleteOpen(false)}
+          user={user}
+          onConfirm={handleDelete}
+          loading={deleteLoading}
+        />
+      )}
+
+      {canUpdateUser && (
+        <UserResetPasswordModal
+          open={resetOpen}
+          onClose={() => setResetOpen(false)}
+          user={user}
+          onConfirm={handleResetPassword}
+          loading={resetLoading}
+        />
       )}
     </div>
   );

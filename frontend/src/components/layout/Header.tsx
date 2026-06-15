@@ -3,10 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Bell, ChevronDown, FileText, Search } from "lucide-react";
+import { Bell, ChevronDown, FileText } from "lucide-react";
+import { ThemeToggleSimple } from "./ThemeToggle";
 
 import { getCurrentUser, logout } from "@/services/auth.service";
-import { ThemeToggleDropdown } from "./ThemeToggle";
 import { useIsDark } from "@/hooks/useIsDark";
 import { routeLabels } from "@/config/routeLabels.config";
 import { userMenuItems } from "@/config/userMenu.config";
@@ -32,41 +32,41 @@ function useBreadcrumbs() {
   });
 }
 
-function SearchBox() {
-  const isDark = useIsDark();
+// function SearchBox() {
+//   const isDark = useIsDark();
 
-  return (
-    <button
-      type="button"
-      className={`group hidden h-10 min-w-[260px] items-center justify-between gap-3 rounded-2xl border px-3.5 text-sm shadow-sm transition-all duration-200 lg:flex ${
-        isDark
-          ? "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:border-blue-400/30 hover:bg-white/[0.07]"
-          : "border-slate-200/80 bg-slate-50/80 text-slate-400 hover:border-blue-200 hover:bg-white hover:shadow-md"
-      }`}
-    >
-      <span className="flex items-center gap-2">
-        <Search
-          className={`h-4 w-4 transition-colors ${
-            isDark
-              ? "text-slate-500 group-hover:text-blue-400"
-              : "text-slate-400 group-hover:text-blue-500"
-          }`}
-        />
-        <span>Tìm kiếm khách hàng, người dùng...</span>
-      </span>
+//   return (
+//     <button
+//       type="button"
+//       className={`group hidden h-10 min-w-[260px] items-center justify-between gap-3 rounded-2xl border px-3.5 text-sm shadow-sm transition-all duration-200 lg:flex ${
+//         isDark
+//           ? "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:border-blue-400/30 hover:bg-white/[0.07]"
+//           : "border-slate-200/80 bg-slate-50/80 text-slate-400 hover:border-blue-200 hover:bg-white hover:shadow-md"
+//       }`}
+//     >
+//       <span className="flex items-center gap-2">
+//         <Search
+//           className={`h-4 w-4 transition-colors ${
+//             isDark
+//               ? "text-slate-500 group-hover:text-blue-400"
+//               : "text-slate-400 group-hover:text-blue-500"
+//           }`}
+//         />
+//         <span>Tìm kiếm khách hàng, người dùng...</span>
+//       </span>
 
-      <kbd
-        className={`rounded-lg border px-1.5 py-0.5 text-[10px] font-semibold ${
-          isDark
-            ? "border-white/[0.08] bg-white/[0.06] text-slate-500"
-            : "border-slate-200 bg-white text-slate-400"
-        }`}
-      >
-        Ctrl K
-      </kbd>
-    </button>
-  );
-}
+//       <kbd
+//         className={`rounded-lg border px-1.5 py-0.5 text-[10px] font-semibold ${
+//           isDark
+//             ? "border-white/[0.08] bg-white/[0.06] text-slate-500"
+//             : "border-slate-200 bg-white text-slate-400"
+//         }`}
+//       >
+//         Ctrl K
+//       </kbd>
+//     </button>
+//   );
+// }
 
 function NotificationBell() {
   const isDark = useIsDark();
@@ -358,9 +358,7 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <SearchBox />
-
-          <ThemeToggleDropdown />
+          <ThemeToggleSimple />
 
           <NotificationBell />
 
