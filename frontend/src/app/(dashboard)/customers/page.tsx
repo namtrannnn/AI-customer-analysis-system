@@ -25,16 +25,17 @@ import type {
 } from "@/types/customer.type";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useToast } from "@/components/ui/ToastProvider";
+import { usePermission } from "@/hooks/usePermission";
 import {
   Users,
   UserCheck,
   UserRound,
   Plus,
   AlertTriangle,
-  Check,
   AlertCircle,
 } from "lucide-react";
-
+import ForbiddenPage from "@/components/ui/ForbiddenPage";
+import Pagination from "@/components/ui/Pagination";
 const DEFAULT_FILTER: CustomerFilterParams = {
   search: "",
   status: "",
@@ -101,6 +102,13 @@ function MiniStat({
 }
 
 export default function CustomersPage() {
+  const { hasPermission } = usePermission();
+
+  const canViewCustomer = hasPermission("customer.view");
+  const canCreateCustomer = hasPermission("customer.create");
+  const canUpdateCustomer = hasPermission("customer.update");
+  const canDeleteCustomer = hasPermission("customer.delete");
+
   const [result, setResult] = useState<PaginatedResponse<Customer> | null>(
     null,
   );
@@ -116,6 +124,11 @@ export default function CustomersPage() {
   const debouncedSearch = useDebounce(filter.search, 500);
 
   const fetchData = useCallback(async () => {
+    if (!canViewCustomer) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -136,6 +149,7 @@ export default function CustomersPage() {
       setLoading(false);
     }
   }, [
+    canViewCustomer,
     filter.page,
     filter.limit,
     filter.status,
@@ -167,6 +181,11 @@ export default function CustomersPage() {
   }
 
   async function handleCreate(payload: CustomerCreatePayload) {
+    if (!canCreateCustomer) {
+      toast.error("Bạn không có quyền thêm khách hàng.");
+      return;
+    }
+
     try {
       const cleanPayload: CustomerCreatePayload = {
         full_name: payload.full_name.trim(),
@@ -207,6 +226,11 @@ export default function CustomersPage() {
   async function handleUpdate(payload: CustomerUpdatePayload) {
     if (!editTarget) return;
 
+    if (!canUpdateCustomer) {
+      toast.error("Bạn không có quyền cập nhật khách hàng.");
+      return;
+    }
+
     try {
       await updateCustomer(editTarget.id, payload);
       toast.success(`Cập nhật thông tin "${payload.full_name}" thành công`);
@@ -219,6 +243,11 @@ export default function CustomersPage() {
 
   async function handleDelete() {
     if (!deleteTarget) return;
+
+    if (!canDeleteCustomer) {
+      toast.error("Bạn không có quyền xóa khách hàng.");
+      return;
+    }
 
     setDeleteLoading(true);
 
@@ -260,6 +289,17 @@ export default function CustomersPage() {
   ).length;
 
   const hasFilter = Boolean(filter.search || filter.status || filter.gender);
+
+  if (!canViewCustomer) {
+    return (
+      <ForbiddenPage
+        description="Bạn không có quyền xem danh sách khách hàng. Vui lòng liên hệ quản trị viên nếu cần được cấp quyền."
+        backHref="/dashboard"
+        backLabel="Về Dashboard"
+        showHomeButton={false}
+      />
+    );
+  }
 
   return (
     <div className="space-y-5">
@@ -320,19 +360,21 @@ export default function CustomersPage() {
               </div>
 
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Tìm, lọc và thêm khách hàng mới.
+                Tìm, lọc và quản lý khách hàng.
               </p>
             </div>
 
-            <div className="flex shrink-0 gap-2">
-              <Button
-                size="base"
-                icon={<Plus className="h-4 w-4" />}
-                onClick={() => setAddOpen(true)}
-              >
-                Thêm khách hàng
-              </Button>
-            </div>
+            {canCreateCustomer && (
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="base"
+                  icon={<Plus className="h-4 w-4" />}
+                  onClick={() => setAddOpen(true)}
+                >
+                  Thêm khách hàng
+                </Button>
+              </div>
+            )}
           </div>
 
           <CustomerFilter
@@ -392,6 +434,8 @@ export default function CustomersPage() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
               <CustomerTable
                 customers={result?.data ?? []}
+                canEdit={canUpdateCustomer}
+                canDelete={canDeleteCustomer}
                 onEdit={(c) => setEditTarget(c)}
                 onDelete={(c) => setDeleteTarget(c)}
               />
@@ -399,95 +443,43 @@ export default function CustomersPage() {
           </div>
         )}
 
-        {!loading && !error && totalPages > 1 && (
-          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              {result?.total} bản ghi · {totalPages} trang
-            </p>
-
-            <div className="flex flex-wrap items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => updateFilter({ page: page - 1 })}
-                disabled={page <= 1}
-                className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                ← Trước
-              </button>
-
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(
-                  (p) => p === 1 || p === totalPages || Math.abs(p - page) <= 1,
-                )
-                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
-                  if (
-                    idx > 0 &&
-                    typeof arr[idx - 1] === "number" &&
-                    (p as number) - (arr[idx - 1] as number) > 1
-                  ) {
-                    acc.push("...");
-                  }
-
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, idx) =>
-                  p === "..." ? (
-                    <span
-                      key={`e-${idx}`}
-                      className="px-1.5 text-sm font-bold text-slate-400"
-                    >
-                      …
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      key={p}
-                      onClick={() => updateFilter({ page: p as number })}
-                      className={`flex h-9 min-w-9 items-center justify-center rounded-xl border text-xs font-bold transition ${
-                        page === p
-                          ? "border-blue-600 bg-blue-600 text-white shadow-lg shadow-blue-600/25"
-                          : "border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-                      }`}
-                    >
-                      {p}
-                    </button>
-                  ),
-                )}
-
-              <button
-                type="button"
-                onClick={() => updateFilter({ page: page + 1 })}
-                disabled={page >= totalPages}
-                className="flex h-9 items-center rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                Sau →
-              </button>
-            </div>
-          </div>
+        {!loading && !error && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            totalItems={result?.total ?? 0}
+            label="khách hàng"
+            onPageChange={(nextPage) => updateFilter({ page: nextPage })}
+          />
         )}
       </section>
 
-      <CustomerAddModal
-        open={addOpen}
-        onClose={() => setAddOpen(false)}
-        onSubmit={handleCreate}
-      />
+      {canCreateCustomer && (
+        <CustomerAddModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onSubmit={handleCreate}
+        />
+      )}
 
-      <CustomerEditModal
-        open={!!editTarget}
-        onClose={() => setEditTarget(null)}
-        customer={editTarget}
-        onSubmit={handleUpdate}
-      />
+      {canUpdateCustomer && (
+        <CustomerEditModal
+          open={!!editTarget}
+          onClose={() => setEditTarget(null)}
+          customer={editTarget}
+          onSubmit={handleUpdate}
+        />
+      )}
 
-      <CustomerDeleteModal
-        open={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        customer={deleteTarget}
-        onConfirm={handleDelete}
-        loading={deleteLoading}
-      />
+      {canDeleteCustomer && (
+        <CustomerDeleteModal
+          open={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          customer={deleteTarget}
+          onConfirm={handleDelete}
+          loading={deleteLoading}
+        />
+      )}
     </div>
   );
 }

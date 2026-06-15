@@ -6,6 +6,8 @@ import {
   CustomerGender,
 } from "@/types/customer.type";
 import Input from "@/components/ui/Input";
+import Button from "@/components/ui/Button";
+import Select from "@/components/ui/Select";
 import { Search, X } from "lucide-react";
 
 interface CustomerFilterProps {
@@ -36,8 +38,7 @@ export default function CustomerFilter({
 
   return (
     <div className="flex flex-wrap items-end gap-3">
-      {/* Search */}
-      <div className="min-w-[220px] flex-1">
+      <div className="min-w-[240px] flex-1">
         <Input
           placeholder="Tìm theo tên, SĐT, mã KH..."
           value={params.search ?? ""}
@@ -46,58 +47,41 @@ export default function CustomerFilter({
         />
       </div>
 
-      {/* Status filter */}
-      <div>
-        <select
-          value={params.status ?? ""}
-          onChange={(e) =>
-            onChange({
-              status: e.target.value as CustomerStatus | "",
-              page: 1,
-            })
-          }
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          aria-label="Lọc trạng thái"
-        >
-          {statusOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select<CustomerStatus | "">
+        value={params.status ?? ""}
+        options={statusOptions}
+        ariaLabel="Lọc trạng thái"
+        onChange={(value) =>
+          onChange({
+            status: value,
+            page: 1,
+          })
+        }
+      />
 
-      {/* Gender filter */}
-      <div>
-        <select
-          value={params.gender ?? ""}
-          onChange={(e) =>
-            onChange({
-              gender: e.target.value as CustomerGender | "",
-              page: 1,
-            })
-          }
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-          aria-label="Lọc giới tính"
-        >
-          {genderOptions.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      <Select<CustomerGender | "">
+        value={params.gender ?? ""}
+        options={genderOptions}
+        ariaLabel="Lọc giới tính"
+        onChange={(value) =>
+          onChange({
+            gender: value,
+            page: 1,
+          })
+        }
+      />
 
-      {/* Reset */}
       {hasFilter && (
-        <button
+        <Button
           type="button"
+          variant="secondary"
+          size="base"
+          icon={<X className="h-4 w-4" />}
           onClick={onReset}
-          className="flex items-center gap-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-400 dark:hover:bg-slate-700/50"
+          className="h-10 rounded-xl"
         >
-          <X className="h-4 w-4" />
           Xóa bộ lọc
-        </button>
+        </Button>
       )}
     </div>
   );

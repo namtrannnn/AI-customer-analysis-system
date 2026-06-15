@@ -6,17 +6,26 @@ services:
     env_file:
       - ./backend/.env
     ports:
-      - "8000:8000"
+      - "8010:8000"
     restart: always
+    networks:
+      - default
+      - docker-net
 
   ai-customer-web:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     container_name: ai-customer-web
     env_file:
       - ./frontend/.env
     ports:
-      - "3000:3000"
+      - "3010:3000"
     depends_on:
       - ai-customer-api
     restart: always
+
+networks:
+  docker-net:
+    external: true
