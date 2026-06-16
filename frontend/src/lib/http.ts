@@ -1,8 +1,7 @@
 import axios, { AxiosError } from "axios";
 import { getToken } from "@/utils/storage";
-const BASE_URL =
-  //  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:8000/api";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
+// "http://localhost:8000/api";
 
 const axiosInstance = axios.create({
   baseURL: BASE_URL,
