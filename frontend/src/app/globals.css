@@ -46,6 +46,19 @@
     0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
   --shadow-xl:
     0 20px 25px -5px rgb(0 0 0 / 0.08), 0 8px 10px -6px rgb(0 0 0 / 0.08);
+
+  --sidebar-gradient: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #f8fafc 45%,
+    #eef2ff 100%
+  );
+
+  --sidebar-shadow: 0 20px 25px -5px rgb(148 163 184 / 0.15);
+
+  --sidebar-divider: rgba(0, 0, 0, 0.08);
+
+  --sidebar-card: rgba(255, 255, 255, 0.7);
 }
 
 /* ─── Dark theme tokens ─────────────────────────────────────────────────────── */
@@ -74,7 +87,18 @@
   --sidebar-bg-hover: #0f172a;
   --sidebar-active-bg: #2563eb;
   --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-gradient: linear-gradient(
+    180deg,
+    #080f1e 0%,
+    #0f172a 45%,
+    #020617 100%
+  );
 
+  --sidebar-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35);
+
+  --sidebar-divider: rgba(255, 255, 255, 0.1);
+
+  --sidebar-card: rgba(255, 255, 255, 0.04);
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4);
   --shadow-lg:
@@ -137,10 +161,11 @@ body {
   Không dùng transition khi đổi theme — apply ngay lập tức để không delay.
   Chỉ giữ transition cho body background khi load.
 */
-.theme-transition {
+.transition-theme {
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease;
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
 }
 
 @keyframes sidebarGlow {
@@ -233,4 +258,10 @@ body {
 }
 .text-muted {
   color: var(--text-muted);
+}
+
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
 }

@@ -79,7 +79,15 @@ export default function RoleDetailPage() {
 
     fetchData();
   }, [roleId, canViewRole]);
+  useEffect(() => {
+    async function fetchRole() {
+      const res = await getRoleById(roleId);
 
+      setRole(res);
+    }
+
+    fetchRole();
+  }, [roleId]);
   async function handleUpdate(payload: RoleUpdatePayload) {
     if (!role) return;
 
@@ -183,7 +191,7 @@ export default function RoleDetailPage() {
     );
   }
 
-  const userCount = role.users?.length ?? 0;
+  const userCount = role.user_count ?? 0;
 
   const assignedModules = Object.entries(permsByModule)
     .map(([module, permissions]) => ({

@@ -56,7 +56,7 @@ export default function RootLayout({
         {/* Prevent FOUC — must run before page renders */}
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="min-h-full theme-transition">
+      <body className="min-h-full">
         <ThemeProvider>
           <ToastProvider>{children}</ToastProvider>
         </ThemeProvider>

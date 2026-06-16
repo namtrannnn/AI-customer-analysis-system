@@ -9,8 +9,14 @@ services:
       - "8010:8000"
     restart: always
     networks:
-      - default
       - docker-net
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.customer-api.rule=Host(`intership-api.hqsolutions.vn`)"
+      - "traefik.http.routers.customer-api.entrypoints=websecure"
+      - "traefik.http.routers.customer-api.tls.certresolver=myresolver"
+      - "traefik.http.services.customer-api.loadbalancer.server.port=8000"
 
   ai-customer-web:
     build:
@@ -25,6 +31,15 @@ services:
     depends_on:
       - ai-customer-api
     restart: always
+    networks:
+      - docker-net
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.customer-web.rule=Host(`intership.hqsolutions.vn`)"
+      - "traefik.http.routers.customer-web.entrypoints=websecure"
+      - "traefik.http.routers.customer-web.tls.certresolver=myresolver"
+      - "traefik.http.services.customer-web.loadbalancer.server.port=3000"
 
 networks:
   docker-net:
