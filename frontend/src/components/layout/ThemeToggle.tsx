@@ -1,8 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState } from "react";
 import { useTheme } from "./ThemeProvider";
-import { useIsDark } from "@/hooks/useIsDark";
 
 const SunIcon = ({ className }: { className?: string }) => (
   <svg
@@ -36,10 +34,10 @@ const MoonIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-// ─── Dropdown chỉ có Sáng / Tối ──────────────────────────────────────────────
 export function ThemeToggleSimple() {
-  const { toggleTheme } = useTheme();
-  const isDark = useIsDark();
+  const { theme, toggleTheme } = useTheme();
+
+  const isDark = theme === "dark";
 
   return (
     <button
@@ -51,11 +49,7 @@ export function ThemeToggleSimple() {
       title={
         isDark ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"
       }
-      className={`group relative flex h-10 w-10 items-center justify-center rounded-2xl border transition-all duration-200 ${
-        isDark
-          ? "border-white/[0.08] bg-white/[0.04] text-amber-400 hover:border-amber-400/30 hover:bg-white/[0.08]"
-          : "border-slate-200/80 bg-white/70 text-slate-500 hover:border-blue-200 hover:bg-white hover:text-slate-800 hover:shadow-md"
-      }`}
+      className="group relative flex h-10 w-10 items-center justify-center rounded-2xl border border-theme surface text-secondary transition-all duration-200 hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] hover:shadow-md"
     >
       <span
         className={`absolute transition-all duration-200 ${
@@ -64,7 +58,7 @@ export function ThemeToggleSimple() {
             : "scale-50 -rotate-90 opacity-0"
         }`}
       >
-        <SunIcon className="h-[18px] w-[18px]" />
+        <SunIcon className="h-[18px] w-[18px] text-amber-400" />
       </span>
 
       <span

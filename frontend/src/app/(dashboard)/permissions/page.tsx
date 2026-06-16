@@ -238,7 +238,7 @@ export default function PermissionsPage() {
 
                 <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Permission Matrix
+                  Ma trận phân quyền
                 </span>
 
                 {!canUpdatePermission && (
@@ -288,13 +288,13 @@ export default function PermissionsPage() {
 
           <StatCard
             icon={<SlidersHorizontal className="h-5 w-5" />}
-            label="Module"
+            label="Phân hệ"
             value={moduleCount}
           />
 
           <StatCard
             icon={<ShieldCheck className="h-5 w-5" />}
-            label="Permission"
+            label="Quyền"
             value={allPerms.length}
           />
 

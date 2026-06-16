@@ -44,6 +44,7 @@ class RoleResponse(BaseModel):
     description: str | None
     permission_ids: list[int] = [] 
     created_at: datetime
+    user_count: int = 0
 
     model_config = {"from_attributes": True}
 

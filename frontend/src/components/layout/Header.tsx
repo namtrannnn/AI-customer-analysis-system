@@ -7,11 +7,9 @@ import { Bell, ChevronDown, FileText } from "lucide-react";
 import { ThemeToggleSimple } from "./ThemeToggle";
 
 import { getCurrentUser, logout } from "@/services/auth.service";
-import { useIsDark } from "@/hooks/useIsDark";
 import { routeLabels } from "@/config/routeLabels.config";
 import { userMenuItems } from "@/config/userMenu.config";
 import type { AuthUser } from "@/types/auth.type";
-
 function useBreadcrumbs() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
@@ -33,7 +31,7 @@ function useBreadcrumbs() {
 }
 
 // function SearchBox() {
-//   const isDark = useIsDark();
+//
 
 //   return (
 //     <button
@@ -69,24 +67,14 @@ function useBreadcrumbs() {
 // }
 
 function NotificationBell() {
-  const isDark = useIsDark();
-
   return (
     <button
       aria-label="Thông báo"
-      className={`group relative flex h-10 w-10 items-center justify-center rounded-2xl border transition-all duration-200 ${
-        isDark
-          ? "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:border-blue-400/30 hover:bg-white/[0.08] hover:text-slate-100"
-          : "border-slate-200/80 bg-white/70 text-slate-500 hover:border-blue-200 hover:bg-white hover:text-slate-800 hover:shadow-md"
-      }`}
+      className="group relative flex h-10 w-10 items-center justify-center rounded-2xl border border-theme surface text-secondary transition-all duration-200 hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] hover:shadow-md"
     >
       <Bell className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-rotate-12" />
 
-      <span
-        className={`absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ${
-          isDark ? "ring-[#0a0f1e]" : "ring-white"
-        }`}
-      />
+      <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-[var(--bg-page)]" />
 
       <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 animate-ping rounded-full bg-red-400 opacity-60" />
     </button>
@@ -100,7 +88,6 @@ function UserMenu({
   user: AuthUser | null;
   onLogout: () => void;
 }) {
-  const isDark = useIsDark();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -129,11 +116,17 @@ function UserMenu({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`group flex h-10 items-center gap-2 rounded-2xl border py-1 pl-1 pr-2 transition-all duration-200 ${
-          isDark
-            ? "border-white/[0.08] bg-white/[0.04] hover:border-blue-400/30 hover:bg-white/[0.08]"
-            : "border-slate-200/80 bg-white/70 hover:border-blue-200 hover:bg-white hover:shadow-md"
-        }`}
+        className="
+  group flex h-10 items-center gap-2 rounded-2xl border py-1 pl-1 pr-2 transition-all duration-200
+
+  border-slate-200/80 bg-white/70
+  hover:border-blue-200 hover:bg-white hover:shadow-md
+
+  dark:border-white/[0.08]
+  dark:bg-white/[0.04]
+  dark:hover:border-blue-400/30
+  dark:hover:bg-white/[0.08]
+"
       >
         <div className="relative">
           <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-xs font-bold text-white shadow-md shadow-blue-500/20">
@@ -144,11 +137,7 @@ function UserMenu({
         </div>
 
         <div className="hidden max-w-[150px] text-left sm:block">
-          <p
-            className={`truncate text-sm font-bold leading-none ${
-              isDark ? "text-slate-100" : "text-slate-800"
-            }`}
-          >
+          <p className="truncate text-sm font-bold leading-none text-slate-800 dark:text-slate-100">
             {user?.full_name ?? "Người dùng"}
           </p>
 
@@ -166,18 +155,22 @@ function UserMenu({
 
       {open && (
         <div
-          className={`absolute right-0 top-full z-50 mt-3 w-72 overflow-hidden rounded-3xl border p-2 shadow-2xl backdrop-blur-xl ${
-            isDark
-              ? "border-white/[0.08] bg-slate-900/95 shadow-black/50"
-              : "border-slate-200/80 bg-white/95 shadow-slate-300/40"
-          }`}
+          className="
+          absolute right-0 top-full z-50 mt-3 w-72 overflow-hidden rounded-3xl border p-2 shadow-2xl backdrop-blur-xl
+
+          border-slate-200/80 bg-white/95 shadow-slate-300/40
+
+          dark:border-white/[0.08]
+          dark:bg-slate-900/95
+          dark:shadow-black/50
+        "
         >
           <div
-            className={`rounded-2xl p-3 ${
-              isDark
-                ? "bg-gradient-to-br from-blue-500/10 to-indigo-500/10"
-                : "bg-gradient-to-br from-blue-50 to-indigo-50"
-            }`}
+            className="
+              rounded-2xl p-3
+              bg-gradient-to-br from-blue-50 to-indigo-50
+              dark:from-blue-500/10 dark:to-indigo-500/10
+            "
           >
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-blue-500/25">
@@ -185,11 +178,7 @@ function UserMenu({
               </div>
 
               <div className="min-w-0">
-                <p
-                  className={`truncate text-sm font-bold ${
-                    isDark ? "text-slate-100" : "text-slate-900"
-                  }`}
-                >
+                <p className="truncate text-sm font-bold text-slate-900 dark:text-slate-100">
                   {user?.full_name ?? "Người dùng"}
                 </p>
 
@@ -228,16 +217,22 @@ function UserMenu({
                   key={item.href}
                   href={item.href ?? "#"}
                   onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isDark
-                      ? "text-slate-300 hover:bg-white/[0.07] hover:text-white"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                  }`}
+                  className="
+                  flex items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-medium transition-colors
+
+                  text-slate-600 hover:bg-slate-100 hover:text-slate-900
+
+                  dark:text-slate-300
+                  dark:hover:bg-white/[0.07]
+                  dark:hover:text-white
+                "
                 >
                   <span
-                    className={`flex h-8 w-8 items-center justify-center rounded-xl ${
-                      isDark ? "bg-white/[0.06]" : "bg-slate-100"
-                    }`}
+                    className="
+                    flex h-8 w-8 items-center justify-center rounded-xl
+                    bg-slate-100
+                    dark:bg-white/[0.06]
+                  "
                   >
                     <Icon className="h-4 w-4 text-slate-400" />
                   </span>
@@ -257,7 +252,6 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
   const router = useRouter();
   const breadcrumbs = useBreadcrumbs();
   const [user, setUser] = useState<AuthUser | null>(null);
-  const isDark = useIsDark();
 
   useEffect(() => {
     setUser(getCurrentUser());
@@ -289,21 +283,11 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
 
           <div className="min-w-0">
             <div className="mb-1 flex items-center gap-2">
-              <h1
-                className={`truncate text-base font-semibold tracking-tight md:text-lg ${
-                  isDark ? "text-slate-100" : "text-slate-900"
-                }`}
-              >
+              <h1 className="text-primary truncate text-base font-semibold tracking-tight md:text-lg">
                 {currentPage}
               </h1>
 
-              <span
-                className={`hidden rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide md:inline-flex ${
-                  isDark
-                    ? "bg-blue-500/15 text-blue-300"
-                    : "bg-blue-50 text-blue-600"
-                }`}
-              >
+              <span className="hidden rounded-full bg-blue-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-400 md:inline-flex">
                 AI System
               </span>
             </div>
@@ -314,11 +298,7 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
             >
               <Link
                 href="/dashboard"
-                className={`transition-colors ${
-                  isDark
-                    ? "text-slate-500 hover:text-slate-300"
-                    : "text-slate-400 hover:text-slate-700"
-                }`}
+                className="text-muted transition-colors hover:text-[var(--text-primary)]"
               >
                 Home
               </Link>
@@ -326,27 +306,18 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
               {breadcrumbs.map((crumb) => (
                 <span key={crumb.href} className="flex items-center gap-1.5">
                   <ChevronDown
-                    className={`h-3.5 w-3.5 -rotate-90 ${
-                      isDark ? "text-slate-700" : "text-slate-300"
-                    }`}
+                    className="h-3.5 w-3.5 -rotate-90"
+                    style={{ color: "var(--text-muted)" }}
                   />
 
                   {crumb.isLast ? (
-                    <span
-                      className={`font-semibold ${
-                        isDark ? "text-slate-300" : "text-slate-600"
-                      }`}
-                    >
+                    <span className="text-secondary font-semibold">
                       {crumb.label}
                     </span>
                   ) : (
                     <Link
                       href={crumb.href}
-                      className={`transition-colors ${
-                        isDark
-                          ? "text-slate-500 hover:text-slate-300"
-                          : "text-slate-400 hover:text-slate-700"
-                      }`}
+                      className="text-muted transition-colors hover:text-[var(--text-primary)]"
                     >
                       {crumb.label}
                     </Link>
@@ -363,9 +334,8 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
           <NotificationBell />
 
           <div
-            className={`mx-1 hidden h-8 w-px sm:block ${
-              isDark ? "bg-white/[0.08]" : "bg-slate-200/80"
-            }`}
+            className="mx-1 hidden h-8 w-px sm:block"
+            style={{ backgroundColor: "var(--border)" }}
           />
 
           <UserMenu user={user} onLogout={handleLogout} />

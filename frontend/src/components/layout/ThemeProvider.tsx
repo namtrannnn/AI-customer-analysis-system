@@ -51,13 +51,13 @@ function applyToDOM(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("light");
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === "undefined") return "light";
 
-  useEffect(() => {
-    const stored = readStored();
-    applyToDOM(stored);
-    setThemeState(stored);
-  }, []);
+    return document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
+  });
 
   const setTheme = useCallback((t: Theme) => {
     applyToDOM(t);
@@ -66,8 +66,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setTheme(theme === "dark" ? "light" : "dark");
-  }, [theme, setTheme]);
+    document.documentElement.classList.add("theme-switching");
+
+    setThemeState((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+
+      applyToDOM(next);
+      localStorage.setItem(STORAGE_KEY, next);
+
+      return next;
+    });
+
+    requestAnimationFrame(() => {
+      document.documentElement.classList.remove("theme-switching");
+    });
+  }, []);
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>

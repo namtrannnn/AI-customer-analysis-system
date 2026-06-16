@@ -26,7 +26,7 @@ export interface Role {
   updated_at?: string | null;
 
   permission_ids?: number[];
-
+  user_count?: number;
   users?: RoleUser[];
   permissions?: RolePermission[];
 }

@@ -59,13 +59,15 @@ def get_admin_user(
     db: Session = Depends(get_db)
 ) -> User:
     """
-    Dependency kiểm tra xem người dùng hiện tại có phải là Admin hay không.
+    Dependency kiểm tra xem người dùng hiện tại có phải là Admin hay không dựa vào mã nhóm quyền (role_code).
     """
-    ADMIN_ROLE_ID = 1 # Giả sử 1 là ID của quyền Admin
     
-    is_admin = db.query(UserRole).filter(
+    # Kết nối (JOIN) 2 bảng để lấy thông tin mã quyền từ database
+    is_admin = db.query(UserRole).join(
+        Role, UserRole.role_id == Role.id
+    ).filter(
         UserRole.user_id == current_user.id,
-        UserRole.role_id == ADMIN_ROLE_ID
+        Role.role_code == "admin"  
     ).first()
     
     if not is_admin:
@@ -95,7 +97,7 @@ class RequirePermission:
 
         # ĐẶC QUYỀN BYPASS: Nếu là "admin", tự động cho qua mọi bài kiểm tra
         user_role = db.query(Role).filter(Role.id == current_role_id).first()
-        if user_role and user_role.role_code == "ADMIN":
+        if user_role and user_role.role_code == "admin":
             return current_user
 
         # NẾU KHÔNG PHẢI ADMIN, tiến hành dò quét quyền chi tiết
