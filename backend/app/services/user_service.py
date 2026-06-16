@@ -110,10 +110,21 @@ def get_list_users(
     users = query.order_by(User.id.desc()).offset(skip).limit(limit).all()
     
     for user in users:
-        user_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
-        user.role_id = user_role.role_id if user_role else None
+        role_info = db.query(Role).join(
+            UserRole, Role.id == UserRole.role_id
+        ).filter(
+            UserRole.user_id == user.id
+        ).first()
         
+        if role_info:
+            user.role_id = role_info.id
+            user.role_name = role_info.role_name
+        else:
+            user.role_id = None
+            user.role_name = None
+
     return users
+    
 
 
 def count_list_users(
@@ -148,10 +159,23 @@ def get_user_by_id(db: Session, user_id: int):
             detail=f"Không tìm thấy hoặc người dùng với ID {user_id} đã bị xóa."
         )
         
-    # Lấy 1 record phân quyền duy nhất
-    user_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
-    user.role_id = user_role.role_id if user_role else None
+    # Truy vấn bảng Role, JOIN với bảng trung gian UserRole để lấy thông tin nhóm quyền
+    role_info = db.query(Role).join(
+        UserRole, Role.id == UserRole.role_id
+    ).filter(
+        UserRole.user_id == user.id
+    ).first()
     
+    # Gán cả ID và Tên quyền vào object user
+    if role_info:
+        user.role_id = role_info.id
+        user.role_name = role_info.role_name
+        user.role_code = role_info.role_code
+    else:
+        user.role_id = None
+        user.role_name = None
+        user.role_code = None
+        
     return user
 
 # API cập nhật thông tin user
