@@ -79,7 +79,19 @@ export default function RoleDetailPage() {
 
     fetchData();
   }, [roleId, canViewRole]);
+  useEffect(() => {
+    async function fetchRole() {
+      const res = await getRoleById(roleId);
 
+      console.log("API response:", res); // 🔥 log raw từ backend
+
+      setRole(res);
+
+      console.log("After setRole:", res); // vẫn OK
+    }
+
+    fetchRole();
+  }, [roleId]);
   async function handleUpdate(payload: RoleUpdatePayload) {
     if (!role) return;
 

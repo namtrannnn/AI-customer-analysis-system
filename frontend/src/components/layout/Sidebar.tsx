@@ -12,7 +12,6 @@ import {
   Users,
   UserRoundCog,
 } from "lucide-react";
-import { useIsDark } from "@/hooks/useIsDark";
 import { usePermission } from "@/hooks/usePermission";
 
 interface SidebarProps {
@@ -28,12 +27,12 @@ const itemAccent: Record<string, string> = {
   "/permissions": "from-rose-500 to-pink-600",
 };
 
-const itemIconColor: Record<string, { light: string; dark: string }> = {
-  "/dashboard": { light: "text-blue-500", dark: "text-blue-400" },
-  "/customers": { light: "text-violet-500", dark: "text-violet-400" },
-  "/users": { light: "text-emerald-500", dark: "text-emerald-400" },
-  "/roles": { light: "text-amber-500", dark: "text-amber-400" },
-  "/permissions": { light: "text-rose-500", dark: "text-rose-400" },
+const itemIconColor = {
+  "/dashboard": "text-blue-500 dark:text-blue-400",
+  "/customers": "text-violet-500 dark:text-violet-400",
+  "/users": "text-emerald-500 dark:text-emerald-400",
+  "/roles": "text-amber-500 dark:text-amber-400",
+  "/permissions": "text-rose-500 dark:text-rose-400",
 };
 
 const menuItems = [
@@ -76,7 +75,6 @@ const menuItems = [
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
-  const isDark = useIsDark();
   const { hasPermission } = usePermission();
 
   const visibleMenuItems = menuItems.filter((item) => {
@@ -86,47 +84,30 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   return (
     <aside
-      className={`fixed left-0 top-0 z-30 flex h-screen flex-col overflow-hidden transition-[width,box-shadow,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+      className={`fixed left-0 top-0 z-30 flex h-screen flex-col overflow-hidden border-r border-theme transition-[width,box-shadow,background-color] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
         collapsed ? "w-20" : "w-64"
-      } ${
-        isDark
-          ? "border-r border-white/[0.08] shadow-2xl shadow-blue-950/30"
-          : "border-r border-slate-200 shadow-xl shadow-slate-200/70"
       }`}
       style={{
-        background: isDark
-          ? "linear-gradient(180deg, #080f1e 0%, #0f172a 45%, #020617 100%)"
-          : "linear-gradient(180deg, #ffffff 0%, #f8fafc 45%, #eef2ff 100%)",
+        background: "var(--sidebar-gradient)",
+        boxShadow: "var(--sidebar-shadow)",
       }}
     >
-      {isDark ? (
-        <>
-          <div className="sidebar-glow pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-blue-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-indigo-500/20 blur-3xl" />
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.04]"
-            style={{
-              backgroundImage:
-                "linear-gradient(rgba(255,255,255,0.18) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.18) 1px,transparent 1px)",
-              backgroundSize: "24px 24px",
-            }}
-          />
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(99,102,241,0.16)_0%,transparent_55%)]" />
-        </>
-      ) : (
-        <>
-          <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-blue-400/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-violet-400/20 blur-3xl" />
-          <div
-            className="pointer-events-none absolute inset-0 opacity-[0.28]"
-            style={{
-              backgroundImage:
-                "linear-gradient(rgba(148,163,184,0.12) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.12) 1px,transparent 1px)",
-              backgroundSize: "28px 28px",
-            }}
-          />
-        </>
-      )}
+      <>
+        <div className="sidebar-glow pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-blue-400/20 dark:bg-blue-500/20 blur-3xl" />
+
+        <div className="pointer-events-none absolute -bottom-24 -right-24 h-72 w-72 rounded-full bg-violet-400/20 dark:bg-indigo-500/20 blur-3xl" />
+
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.28] dark:opacity-[0.04]"
+          style={{
+            backgroundImage:
+              "linear-gradient(rgba(148,163,184,0.12) 1px,transparent 1px),linear-gradient(90deg,rgba(148,163,184,0.12) 1px,transparent 1px)",
+            backgroundSize: "28px 28px",
+          }}
+        />
+
+        <div className="pointer-events-none absolute inset-0 hidden dark:block bg-[radial-gradient(ellipse_at_bottom_right,rgba(99,102,241,0.16)_0%,transparent_55%)]" />
+      </>
 
       <div
         className={`relative flex h-16 shrink-0 items-center ${
@@ -144,16 +125,12 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
         {!collapsed && (
           <div className="min-w-0 overflow-hidden whitespace-nowrap">
             <p
-              className={`truncate text-[14px] font-extrabold leading-none tracking-tight ${
-                isDark ? "text-white" : "text-slate-900"
-              }`}
+              className={`truncate text-[14px] font-extrabold leading-none tracking-tight ${"text-slate-900 dark:text-white"}`}
             >
               AI Customer
             </p>
             <p
-              className={`mt-0.5 truncate text-[9.5px] font-semibold uppercase tracking-[0.2em] ${
-                isDark ? "text-slate-500" : "text-slate-400"
-              }`}
+              className={`mt-0.5 truncate text-[9.5px] font-semibold uppercase tracking-[0.2em] ${"text-slate-400 dark:text-slate-500"}`}
             >
               Analysis System
             </p>
@@ -165,10 +142,9 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
           onClick={onToggle}
           aria-label={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
           title={collapsed ? "Mở rộng sidebar" : "Thu gọn sidebar"}
-          className={`absolute -right-3.5 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-300 hover:scale-105 active:scale-95 ${
-            isDark
-              ? "border-white/10 bg-slate-950/90 text-slate-300 shadow-lg shadow-black/40 hover:border-blue-400/40 hover:bg-blue-600 hover:text-white"
-              : "border-slate-200 bg-white/95 text-slate-500 shadow-lg shadow-slate-300/70 hover:border-blue-200 hover:bg-blue-600 hover:text-white"
+          className={`absolute -right-3.5 top-5 z-20 flex h-8 w-8 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-300 hover:scale-105 active:scale-95
+           border-slate-200 bg-white/95 text-slate-500 shadow-lg shadow-black/40 hover:border-blue-400/40 hover:bg-blue-600 hover:text-white
+               dark:border-white/10 dark:bg-slate-950/90 dark:text-slate-300" shadow-lg shadow-slate-300/70 hover:border-blue-200 hover:bg-blue-600 hover:text-white"
           }`}
         >
           <ChevronLeft
@@ -183,48 +159,20 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       <div
         className={`${collapsed ? "mx-4" : "mx-5"} relative h-px`}
         style={{
-          background: isDark
-            ? "linear-gradient(to right, transparent, rgba(255,255,255,0.1), transparent)"
-            : "linear-gradient(to right, transparent, rgba(0,0,0,0.08), transparent)",
+          background:
+            "linear-gradient(to right, transparent, var(--sidebar-divider), transparent)",
         }}
       />
 
       {!collapsed && (
         <div className="relative px-4 pt-4">
-          <div
-            className={`flex items-center gap-2.5 rounded-xl px-3 py-2.5 ${
-              isDark
-                ? "border border-white/[0.08] bg-white/[0.04]"
-                : "border border-slate-200 bg-white/70 shadow-sm"
-            }`}
-          >
+          <div className="surface border border-theme flex items-center gap-2.5 rounded-xl px-3 py-2.5 shadow-sm">
             <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                isDark ? "bg-emerald-500/15" : "bg-emerald-50"
-              }`}
+              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${"bg-emerald-50 dark:bg-emerald-500/15"}`}
             >
               <Circle
-                className={`h-2.5 w-2.5 fill-emerald-400 text-emerald-400 ${
-                  isDark ? "drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]" : ""
-                }`}
+                className={`h-2.5 w-2.5 fill-emerald-400 text-emerald-400 ${"dark:drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]"}`}
               />
-            </div>
-
-            <div className="min-w-0">
-              <p
-                className={`text-xs font-semibold ${
-                  isDark ? "text-slate-300" : "text-slate-700"
-                }`}
-              >
-                Mock mode
-              </p>
-              <p
-                className={`text-[10px] ${
-                  isDark ? "text-slate-600" : "text-slate-400"
-                }`}
-              >
-                Dữ liệu thử nghiệm
-              </p>
             </div>
           </div>
         </div>
@@ -232,9 +180,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       {!collapsed && (
         <p
-          className={`relative px-5 pb-2 pt-5 text-[9.5px] font-bold uppercase tracking-[0.25em] ${
-            isDark ? "text-slate-600" : "text-slate-400"
-          }`}
+          className={`relative px-5 pb-2 pt-5 text-[9.5px] font-bold uppercase tracking-[0.25em] ${"text-slate-400 dark:text-slate-600"}`}
         >
           Menu chính
         </p>
@@ -251,9 +197,8 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
             (item.href !== "/dashboard" && pathname.startsWith(item.href));
 
           const accent = itemAccent[item.href];
-          const iconColor = isDark
-            ? itemIconColor[item.href].dark
-            : itemIconColor[item.href].light;
+          const iconColor =
+            itemIconColor[item.href] || "text-slate-500 dark:text-slate-400";
 
           const Icon = item.icon;
 
@@ -270,9 +215,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
               } ${
                 active
                   ? "shadow-lg"
-                  : isDark
-                    ? "hover:bg-white/[0.06] hover:shadow-lg hover:shadow-black/20"
-                    : "hover:bg-white/80 hover:shadow-md hover:shadow-slate-200/80"
+                  : "hover:bg-white/80 dark:hover:bg-white/[0.06] hover:shadow-md dark:hover:shadow-black/20"
               }`}
             >
               {active && (
@@ -292,9 +235,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 className={`relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-all duration-300 group-hover:scale-110 group-hover:rotate-3 ${
                   active
                     ? "bg-white/20 text-white shadow-lg shadow-black/10"
-                    : isDark
-                      ? `bg-white/[0.04] ${iconColor} group-hover:bg-white/[0.1] group-hover:shadow-lg`
-                      : `bg-white ${iconColor} shadow-sm ring-1 ring-slate-200/80 group-hover:shadow-md`
+                    : `bg-white dark:bg-white/[0.04] ${iconColor} ring-1 ring-slate-200/80 dark:ring-white/10`
                 }`}
               >
                 <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
@@ -306,9 +247,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     className={`block text-sm font-semibold leading-none ${
                       active
                         ? "text-white"
-                        : isDark
-                          ? "text-slate-300 group-hover:text-slate-100"
-                          : "text-slate-700 group-hover:text-slate-900"
+                        : "text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-slate-100"
                     }`}
                   >
                     {item.label}
@@ -318,9 +257,7 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     className={`mt-0.5 block text-[11px] ${
                       active
                         ? "text-white/70"
-                        : isDark
-                          ? "text-slate-600 group-hover:text-slate-500"
-                          : "text-slate-400 group-hover:text-slate-500"
+                        : "text-slate-400 dark:text-slate-600 group-hover:text-slate-500"
                     }`}
                   >
                     {item.desc}
