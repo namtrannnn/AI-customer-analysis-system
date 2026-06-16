@@ -85,7 +85,7 @@ export default function UserTable({
       </div>
     );
   }
-
+  // console.log("users,", users);
   return (
     <div className="overflow-x-auto bg-white dark:bg-slate-900">
       <table className="w-full min-w-[980px] text-sm">
@@ -161,7 +161,7 @@ export default function UserTable({
                   ) : (
                     <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <ShieldCheck className="h-3.5 w-3.5" />
-                      {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
+                      {user.role_name ?? `Role #${roleId}`}
                     </span>
                   )}
                 </td>
