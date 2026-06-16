@@ -4,7 +4,7 @@ export type UserFormErrors = Partial<
   Record<keyof UserCreatePayload | keyof UserUpdatePayload, string>
 >;
 
-const fullNameRegex = /^([^\W\d_]|\s)+$/u;
+const fullNameRegex = /^[A-Za-zÀ-ỹ\s]+$/;
 const phoneRegex = /^(0|\+84)[35789][0-9]{8}$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
