@@ -33,7 +33,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(
         String(100),
         unique=True,
-        nullable=False,
+        nullable=True,
         index=True,
     )
 

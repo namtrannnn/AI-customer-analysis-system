@@ -129,10 +129,18 @@ def count_list_roles(db: Session, search_query: str | None = None) -> int:
 def get_role_by_id(db: Session, role_id: int) -> Role:
     role = db.query(Role).filter(Role.id == role_id).first()
     if not role:
-        raise HTTPException(status_code=404, detail=f"Không tìm thấy Nhóm quyền với ID {role_id}.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Không tìm thấy Nhóm quyền với ID {role_id}."
+        )
         
+    # Lấy danh sách ID quyền hạn
     role_permissions = db.query(RolePermission).filter(RolePermission.role_id == role.id).all()
     role.permission_ids = [rp.permission_id for rp in role_permissions]
+    
+    # Đếm số lượng người dùng thuộc nhóm quyền này
+    user_count = db.query(UserRole).filter(UserRole.role_id == role.id).count()
+    role.user_count = user_count
     
     return role
 
