@@ -83,11 +83,7 @@ export default function RoleDetailPage() {
     async function fetchRole() {
       const res = await getRoleById(roleId);
 
-      console.log("API response:", res); // 🔥 log raw từ backend
-
       setRole(res);
-
-      console.log("After setRole:", res); // vẫn OK
     }
 
     fetchRole();
