@@ -27,7 +27,7 @@ const itemAccent: Record<string, string> = {
   "/permissions": "from-rose-500 to-pink-600",
 };
 
-const itemIconColor = {
+const itemIconColor: Record<string, string> = {
   "/dashboard": "text-blue-500 dark:text-blue-400",
   "/customers": "text-violet-500 dark:text-violet-400",
   "/users": "text-emerald-500 dark:text-emerald-400",

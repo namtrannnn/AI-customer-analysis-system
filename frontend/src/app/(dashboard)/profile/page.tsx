@@ -294,7 +294,6 @@ export default function ProfilePage() {
     (user.role_id
       ? (ROLE_LABEL_MAP[user.role_id] ?? `Role #${user.role_id}`)
       : "Chưa gán quyền");
-  console.log("avatar_url:", user.avatar_url);
   return (
     <div className="space-y-6 pb-24">
       {/* Header */}
