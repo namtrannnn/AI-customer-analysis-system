@@ -79,7 +79,8 @@ class UserResponse(BaseModel):
     avatar_url: str | None
     status: str
     role_id: int
-    
+    role_name: str | None = None
+    role_code: str | None = None
     last_login_at: datetime | None = None
     created_at: datetime
     updated_at: datetime | None = None

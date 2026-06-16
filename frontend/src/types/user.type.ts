@@ -14,8 +14,9 @@ export interface User {
   created_at: string;
   updated_at: string | null;
 
-  // BE mới trả 1 quyền duy nhất
   role_id: number | null;
+  role_name: string | null;
+  role_code: string | null;
 }
 
 export interface UserCreatePayload {
