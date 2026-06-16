@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import { Eye, Pencil, Lock } from "lucide-react";
 
 import { Customer } from "@/types/customer.type";
 import { timeAgo } from "@/utils/formatDate";
@@ -235,7 +235,7 @@ export default function CustomerTable({
                         onClick={() => onDelete(c)}
                         title="Xóa"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Lock className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
