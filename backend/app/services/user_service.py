@@ -110,10 +110,21 @@ def get_list_users(
     users = query.order_by(User.id.desc()).offset(skip).limit(limit).all()
     
     for user in users:
-        user_role = db.query(UserRole).filter(UserRole.user_id == user.id).first()
-        user.role_id = user_role.role_id if user_role else None
+        role_info = db.query(Role).join(
+            UserRole, Role.id == UserRole.role_id
+        ).filter(
+            UserRole.user_id == user.id
+        ).first()
         
+        if role_info:
+            user.role_id = role_info.id
+            user.role_name = role_info.role_name
+        else:
+            user.role_id = None
+            user.role_name = None
+
     return users
+    
 
 
 def count_list_users(
