@@ -165,20 +165,6 @@ export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
       />
 
       {!collapsed && (
-        <div className="relative px-4 pt-4">
-          <div className="surface border border-theme flex items-center gap-2.5 rounded-xl px-3 py-2.5 shadow-sm">
-            <div
-              className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${"bg-emerald-50 dark:bg-emerald-500/15"}`}
-            >
-              <Circle
-                className={`h-2.5 w-2.5 fill-emerald-400 text-emerald-400 ${"dark:drop-shadow-[0_0_6px_rgba(52,211,153,0.8)]"}`}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {!collapsed && (
         <p
           className={`relative px-5 pb-2 pt-5 text-[9.5px] font-bold uppercase tracking-[0.25em] ${"text-slate-400 dark:text-slate-600"}`}
         >

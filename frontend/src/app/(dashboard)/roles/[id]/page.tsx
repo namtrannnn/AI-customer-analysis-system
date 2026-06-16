@@ -195,7 +195,7 @@ export default function RoleDetailPage() {
     );
   }
 
-  const userCount = role.users?.length ?? 0;
+  const userCount = role.user_count ?? 0;
 
   const assignedModules = Object.entries(permsByModule)
     .map(([module, permissions]) => ({

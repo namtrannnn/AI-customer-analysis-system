@@ -78,7 +78,7 @@ export default function RolesPage() {
         limit: filter.limit,
         search: debouncedSearch,
       });
-
+      console.log("LIST ROLES:", data.data); // 👈 mỗi role có user_count không
       setResult(data);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Có lỗi xảy ra");

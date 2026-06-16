@@ -139,7 +139,12 @@ def get_role_by_id(db: Session, role_id: int) -> Role:
     role.permission_ids = [rp.permission_id for rp in role_permissions]
     
     # Đếm số lượng người dùng thuộc nhóm quyền này
-    user_count = db.query(UserRole).filter(UserRole.role_id == role.id).count()
+    user_count = db.query(UserRole).join(
+        User, UserRole.user_id == User.id
+    ).filter(
+        UserRole.role_id == role.id,
+        User.status != "deleted" 
+    ).count()
     role.user_count = user_count
     
     return role
