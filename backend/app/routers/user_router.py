@@ -7,7 +7,7 @@ from app.schemas.response_schema import StandardResponse
 from app.services import user_service as services
 from app.database.session import get_db 
 from app.utils.response import success_response
-from app.core.dependencies import RequirePermission
+from app.core.dependencies import RequirePermission, get_current_user
 
 router = APIRouter(
     prefix="/api/users", 
@@ -74,8 +74,13 @@ def get_users(
 def get_user(
     user_id: int, 
     db: Session = Depends(get_db),
-    current_user = Depends(RequirePermission("user.view"))
+    # 1. Chỉ yêu cầu user đã đăng nhập, không chặn quyền ngay từ đầu
+    current_user = Depends(get_current_user) 
 ):
+    # 2. Nếu ID đang truy cập KHÁC với ID của chính mình -> Yêu cầu quyền "user.view"
+    if current_user.id != user_id:
+        RequirePermission("user.view")(current_user=current_user, db=db)
+        
     user = services.get_user_by_id(db=db, user_id=user_id)
     return success_response(data=user, message="Lấy chi tiết người dùng thành công")
 
@@ -86,8 +91,13 @@ def update_user(
     user_id: int, 
     payload: schemas.UserUpdate, 
     db: Session = Depends(get_db),
-    current_user = Depends(RequirePermission("user.update"))
+    # 1. Tương tự, chỉ bắt đăng nhập để cho phép tự sửa profile
+    current_user = Depends(get_current_user)
 ):
+    # 2. Nếu đang cố sửa thông tin của người khác -> Yêu cầu quyền "user.update"
+    if current_user.id != user_id:
+        RequirePermission("user.update")(current_user=current_user, db=db)
+        
     updated_user = services.update_user(db=db, user_id=user_id, payload=payload)
     return success_response(
         data=updated_user, 
@@ -115,9 +125,15 @@ def upload_avatar(
     user_id: int, 
     file: UploadFile = File(...), 
     db: Session = Depends(get_db),
-    current_user = Depends(RequirePermission("user.update")) # BẢO MẬT
+    # 1. Chỉ bắt đăng nhập để user tự đổi ảnh mình
+    current_user = Depends(get_current_user) 
 ):
     """API tải lên và cập nhật ảnh đại diện của người dùng (tối đa 3MB)"""
+    
+    # 2. Nếu đổi ảnh cho người khác -> Yêu cầu quyền "user.update"
+    if current_user.id != user_id:
+        RequirePermission("user.update")(current_user=current_user, db=db)
+        
     user = services.upload_user_avatar(db=db, user_id=user_id, file=file)
     return success_response(
         data=user, 
