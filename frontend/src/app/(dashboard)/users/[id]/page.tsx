@@ -279,9 +279,9 @@ export default function UserDetailPage() {
   }
 
   const status = statusConfig[user.status] ?? statusConfig.inactive;
-  const roleId = user.role_id;
   const firstChar = user.full_name?.trim()?.charAt(0)?.toUpperCase() || "U";
-
+  // console.log("user.role", user);
+  // console.log("user.role_id", user.role_id);
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
@@ -346,10 +346,10 @@ export default function UserDetailPage() {
                     @{user.username}
                   </code>
 
-                  {roleId && (
+                  {user.role_id && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <ShieldCheck className="h-4 w-4" />
-                      {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
+                      {user.role_name ?? "No role"}
                     </span>
                   )}
                 </div>
@@ -523,7 +523,7 @@ export default function UserDetailPage() {
             </div>
           </div>
 
-          {!roleId ? (
+          {!user?.role_id ? (
             <div className="rounded-2xl border border-dashed border-slate-300 p-6 text-center dark:border-slate-600">
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300">
                 Chưa gán quyền
@@ -541,12 +541,12 @@ export default function UserDetailPage() {
 
                 <div>
                   <p className="text-base font-bold text-slate-900 dark:text-white">
-                    {ROLE_LABEL_MAP[roleId] ?? `Role #${roleId}`}
+                    {user.role_name}
                   </p>
 
-                  <code className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
-                    {ROLE_CODE_MAP[roleId] ?? `role_${roleId}`} · ID {roleId}
-                  </code>
+                  {/* <code className="mt-1 block text-xs text-slate-500 dark:text-slate-400">
+                    {user.role_code} · ID {user.role_id}
+                  </code> */}
                 </div>
               </div>
             </div>
