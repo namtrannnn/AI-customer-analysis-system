@@ -279,9 +279,8 @@ export default function UserDetailPage() {
   }
 
   const status = statusConfig[user.status] ?? statusConfig.inactive;
-  const roleId = user.role_id;
   const firstChar = user.full_name?.trim()?.charAt(0)?.toUpperCase() || "U";
-  console.log("user.role", user);
+  // console.log("user.role", user);
   // console.log("user.role_id", user.role_id);
   return (
     <div className="space-y-6">
@@ -347,10 +346,10 @@ export default function UserDetailPage() {
                     @{user.username}
                   </code>
 
-                  {user.role && (
+                  {user.role_id && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-sm font-medium text-blue-700 ring-1 ring-blue-100 dark:bg-blue-500/10 dark:text-blue-300 dark:ring-blue-500/20">
                       <ShieldCheck className="h-4 w-4" />
-                      {user.role.name ?? "No role"}
+                      {user.role_name ?? "No role"}
                     </span>
                   )}
                 </div>
