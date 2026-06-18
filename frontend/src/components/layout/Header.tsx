@@ -5,11 +5,14 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { Bell, ChevronDown, FileText } from "lucide-react";
 import { ThemeToggleSimple } from "./ThemeToggle";
+import Image from "next/image";
 
-import { getCurrentUser, logout } from "@/services/auth.service";
+import { logout } from "@/services/auth.service";
 import { routeLabels } from "@/config/routeLabels.config";
 import { userMenuItems } from "@/config/userMenu.config";
 import type { AuthUser } from "@/types/auth.type";
+import { getUser } from "@/utils/storage";
+
 function useBreadcrumbs() {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
@@ -129,8 +132,20 @@ function UserMenu({
 "
       >
         <div className="relative">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-xs font-bold text-white shadow-md shadow-blue-500/20">
-            {initials}
+          <div className="relative h-8 w-8 overflow-hidden rounded-xl">
+            {user?.avatar_url ? (
+              <Image
+                src={user.avatar_url}
+                alt={user.full_name ?? "Avatar"}
+                fill
+                className="object-cover"
+                sizes="32px"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-xs font-bold text-white">
+                {initials}
+              </div>
+            )}
           </div>
 
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500 dark:border-slate-900" />
@@ -173,8 +188,20 @@ function UserMenu({
             "
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-sm font-bold text-white shadow-lg shadow-blue-500/25">
-                {initials}
+              <div className="relative h-11 w-11 overflow-hidden rounded-2xl">
+                {user?.avatar_url ? (
+                  <Image
+                    src={user.avatar_url}
+                    alt={user.full_name ?? "Avatar"}
+                    fill
+                    className="object-cover"
+                    sizes="44px"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-500 via-indigo-500 to-violet-600 text-sm font-bold text-white">
+                    {initials}
+                  </div>
+                )}
               </div>
 
               <div className="min-w-0">
@@ -254,7 +281,17 @@ export default function Header({ collapsed }: { collapsed: boolean }) {
   const [user, setUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
-    setUser(getCurrentUser());
+    const syncUser = () => {
+      setUser(getUser<AuthUser>());
+    };
+
+    syncUser();
+
+    window.addEventListener("user-updated", syncUser);
+
+    return () => {
+      window.removeEventListener("user-updated", syncUser);
+    };
   }, []);
 
   const handleLogout = async () => {
