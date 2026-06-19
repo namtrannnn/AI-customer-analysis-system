@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useCallback } from "react";
+import { Video } from "lucide-react";
 import { VIDEO_CONSTRAINTS } from "@/types/video.type";
 
 interface VideoUploaderProps {
@@ -69,9 +70,7 @@ export default function VideoUploader({ onFileSelected, disabled }: VideoUploade
           dragOver ? "scale-110" : "group-hover:scale-105"
         } bg-gradient-to-br from-violet-500 to-purple-600 shadow-lg shadow-violet-500/30`}
       >
-        <svg className="h-9 w-9 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.069A1 1 0 0121 8.882v6.236a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
-        </svg>
+        <Video className="h-9 w-9 text-white" />
         {/* Pulse ring */}
         <div className="absolute inset-0 animate-ping rounded-2xl bg-violet-400/20" />
       </div>

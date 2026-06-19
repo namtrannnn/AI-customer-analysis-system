@@ -22,9 +22,9 @@
 
   /* Text */
   --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --text-disabled: #cbd5e1;
+  --text-secondary: #475569; /* slate-600 */
+  --text-muted: #64748b; /* slate-500 */
+  --text-disabled: #94a3b8; /* slate-400 */
 
   /* Sidebar (stays dark in both modes — professional look) */
   --sidebar-bg: #0f172a;
@@ -77,10 +77,10 @@
   --border: rgba(255, 255, 255, 0.08);
   --border-subtle: rgba(255, 255, 255, 0.04);
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #475569;
-  --text-disabled: #334155;
+  --text-primary: #ffffff;
+  --text-secondary: #e2e8f0; /* slate-200 */
+  --text-muted: #cbd5e1; /* slate-300 */
+  --text-disabled: #94a3b8; /* slate-400 */
 
   /* Sidebar gets slightly lighter in dark mode */
   --sidebar-bg: #060d1a;

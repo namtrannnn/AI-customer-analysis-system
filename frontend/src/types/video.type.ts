@@ -66,8 +66,8 @@ export interface VideoAnalysisResult {
 
 // ─── Upload constraints ───────────────────────────────────────────────────────
 export const VIDEO_CONSTRAINTS = {
-  maxSizeMB: 500,
-  maxSizeBytes: 500 * 1024 * 1024,
+  maxSizeMB: 50,
+  maxSizeBytes: 50 * 1024 * 1024,
   acceptedFormats: ["video/mp4", "video/avi", "video/quicktime", "video/x-matroska", "video/x-msvideo"],
   acceptedExtensions: [".mp4", ".avi", ".mov", ".mkv"],
 } as const;

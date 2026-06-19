@@ -1,14 +1,11 @@
-/**
- * Video Service — Mock implementation
- * Khi có backend thật: xóa mock, uncomment các dòng http.*
- */
-
-import { delay } from "./api";
 import { generateMockAnalysisResult } from "@/mocks/videos.mock";
 import type { VideoAnalysisResult, VideoFileMeta } from "@/types/video.type";
 import { VIDEO_CONSTRAINTS } from "@/types/video.type";
+import { http } from "@/lib/http";
 
-// ─── Validate file trước khi upload ──────────────────────────────────────────
+const delay = (ms = 400) => new Promise<void>((r) => setTimeout(r, ms));
+
+// ─── Validate file ────────────────────────────────────────────────────────────
 export function validateVideoFile(file: File): string | null {
   if (file.size > VIDEO_CONSTRAINTS.maxSizeBytes) {
     return `File quá lớn. Giới hạn ${VIDEO_CONSTRAINTS.maxSizeMB}MB, file của bạn ${(file.size / 1024 / 1024).toFixed(1)}MB`;
@@ -21,7 +18,7 @@ export function validateVideoFile(file: File): string | null {
   return null;
 }
 
-// ─── Extract video metadata (duration, thumbnail, dimensions) ────────────────
+// ─── Extract video metadata + thumbnail ──────────────────────────────────────
 export async function extractVideoMeta(file: File): Promise<VideoFileMeta> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -35,14 +32,11 @@ export async function extractVideoMeta(file: File): Promise<VideoFileMeta> {
     };
 
     video.onseeked = () => {
-      // Capture thumbnail từ frame hiện tại
       const canvas = document.createElement("canvas");
       canvas.width = video.videoWidth || 640;
       canvas.height = video.videoHeight || 360;
       const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      }
+      if (ctx) ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const thumbnailUrl = canvas.toDataURL("image/jpeg", 0.8);
       URL.revokeObjectURL(url);
 
@@ -65,55 +59,104 @@ export async function extractVideoMeta(file: File): Promise<VideoFileMeta> {
   });
 }
 
-// ─── Upload video ─────────────────────────────────────────────────────────────
-export async function uploadVideo(
+// ─── Upload + Analyze (1 bước — khớp BE API) ─────────────────────────────────
+export async function uploadAndAnalyzeVideo(
   file: File,
   onProgress?: (percent: number) => void
-): Promise<{ video_id: number; upload_url: string }> {
-  // Mock: simulate upload progress
+): Promise<VideoAnalysisResult> {
+  // Simulate progress tăng dần trong khi chờ server
+  let currentProgress = 0;
+  const progressInterval = setInterval(() => {
+    currentProgress = Math.min(currentProgress + 5, 90);
+    onProgress?.(currentProgress);
+  }, 300);
+
+  try {
+    const form = new FormData();
+    form.append("file", file);
+
+    // Dùng http.raw để axios tự set Content-Type multipart/form-data với boundary
+    const res = await http.raw.post<{
+      status: string;
+      data: {
+        total_customers: number;
+        new_customers: number;
+        returning_customers: number;
+        detected_customers: Array<{
+          anonymous_id: string;
+          customer_type: string;
+          confidence: number;
+        }>;
+        message: string;
+      };
+    }>("/videos/upload", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    clearInterval(progressInterval);
+    onProgress?.(100);
+
+    const data = res.data.data;
+
+    // Map BE schema → FE VideoAnalysisResult
+    const avgConf =
+      data.detected_customers.length > 0
+        ? data.detected_customers.reduce((s, c) => s + c.confidence, 0) /
+          data.detected_customers.length
+        : 0;
+
+    const result: VideoAnalysisResult = {
+      video_id: Date.now(),
+      video_name: file.name,
+      duration: 0,
+      processed_at: new Date().toISOString(),
+      stats: {
+        total_customers: data.total_customers,
+        new_customers: data.new_customers,
+        returning_customers: data.returning_customers,
+        identified_customers: data.detected_customers.filter(
+          (c) => c.customer_type === "returning"
+        ).length,
+        avg_confidence: parseFloat(avgConf.toFixed(3)),
+        processing_time_ms: 0,
+      },
+      detected_persons: data.detected_customers.map((c, i) => ({
+        id: i + 1,
+        anonymous_id: c.anonymous_id,
+        person_type: c.customer_type === "returning" ? "identified" : "anonymous",
+        confidence: c.confidence,
+        first_detected_at: "—",
+        appearances: 1,
+        zone: null,
+        thumbnail_url: `https://api.dicebear.com/7.x/personas/svg?seed=${c.anonymous_id}`,
+      })),
+    };
+
+    return result;
+  } catch (e) {
+    clearInterval(progressInterval);
+    // Axios interceptor đã format message — map sang error type
+    const msg = e instanceof Error ? e.message : "Có lỗi xảy ra";
+    if (msg.includes("50MB") || msg.includes("quá lớn")) throw new Error("FILE_TOO_LARGE");
+    if (msg.includes("định dạng") || msg.includes("video/")) throw new Error("INVALID_FORMAT");
+    throw e;
+  }
+}
+
+// ─── Mock (dùng khi chưa có backend) ─────────────────────────────────────────
+export async function uploadAndAnalyzeMock(
+  fileMeta: VideoFileMeta,
+  onProgress?: (percent: number) => void
+): Promise<VideoAnalysisResult> {
   const steps = [10, 25, 45, 65, 80, 95, 100];
   for (const step of steps) {
     await delay(200 + Math.random() * 300);
     onProgress?.(step);
   }
 
-  return {
-    video_id: Math.floor(Math.random() * 10000),
-    upload_url: `mock://videos/${file.name}`,
-  };
+  if (fileMeta.duration < 3) throw new Error("NO_PERSON_FOUND");
 
-  // ── Khi có backend ──
-  // const form = new FormData();
-  // form.append("file", file);
-  // const res = await fetch(`${BASE_URL}/videos/upload`, {
-  //   method: "POST",
-  //   headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
-  //   body: form,
-  // });
-  // const json = await res.json();
-  // return json.data;
-}
-
-// ─── Trigger phân tích video ──────────────────────────────────────────────────
-export async function analyzeVideo(
-  videoId: number,
-  fileMeta: VideoFileMeta
-): Promise<VideoAnalysisResult> {
-  // Mock: simulate AI processing time (tỷ lệ với duration)
-  const processingTime = Math.min(fileMeta.duration * 200, 4000);
-  await delay(processingTime);
-
-  const result = generateMockAnalysisResult(fileMeta.name, fileMeta.duration);
-
-  // Giả lập "no person found" nếu video quá ngắn
-  if (fileMeta.duration < 3) {
-    throw new Error("NO_PERSON_FOUND");
-  }
-
-  return result;
-
-  // ── Khi có backend ──
-  // return http.post<VideoAnalysisResult>(`/videos/${videoId}/analyze`, {});
+  return generateMockAnalysisResult(fileMeta.name, fileMeta.duration);
 }
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
