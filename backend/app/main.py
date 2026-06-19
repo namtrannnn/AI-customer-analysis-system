@@ -13,7 +13,8 @@ from app.routers import customer_router
 from app.routers import user_router
 from app.routers import auth_router
 from app.routers import role_router
-from app.routers import permission_router 
+from app.routers import permission_router
+from app.routers import video_router 
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -40,6 +41,7 @@ app.include_router(user_router.router)
 app.include_router(auth_router.router)
 app.include_router(role_router.router)
 app.include_router(permission_router.router)
+app.include_router(video_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)
