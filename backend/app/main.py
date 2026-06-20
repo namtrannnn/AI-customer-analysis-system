@@ -9,12 +9,13 @@ from sqlalchemy.orm import Session
 from app.database.session import get_db
 from app.utils.response import error_response, success_response
 from app.routers import customer_router
-
 from app.routers import user_router
 from app.routers import auth_router
 from app.routers import role_router
 from app.routers import permission_router
-from app.routers import video_router 
+from app.routers import video_router
+from app.routers import zone_router
+from app.routers import track_router
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -42,6 +43,8 @@ app.include_router(auth_router.router)
 app.include_router(role_router.router)
 app.include_router(permission_router.router)
 app.include_router(video_router.router)
+app.include_router(zone_router.router)
+app.include_router(track_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)

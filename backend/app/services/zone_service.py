@@ -1,0 +1,209 @@
+"""
+Zone Service — BE-17, BE-19, BE-20, BE-21, BE-24
+"""
+
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from fastapi import HTTPException, status
+
+from app.models.store_zone import StoreZone
+from app.models.zone_visit import ZoneVisit
+from app.models.movement_track import MovementTrack
+from app.models.person_profile import PersonProfile
+from app.models.visit_sessions import VisitSession
+from app.schemas.zone_schema import ZoneCreate, ZoneUpdate
+
+# Palette màu mặc định — xoay vòng khi tạo zone mới
+ZONE_COLORS = [
+    "#3b82f6", "#10b981", "#f59e0b", "#ef4444",
+    "#8b5cf6", "#06b6d4", "#ec4899", "#84cc16",
+]
+
+# ─── Zone CRUD ────────────────────────────────────────────────────────────────
+
+def get_all_zones(db: Session) -> list[StoreZone]:
+    return db.query(StoreZone).order_by(StoreZone.created_at.desc()).all()
+
+
+def get_zone_by_id(db: Session, zone_id: int) -> StoreZone:
+    zone = db.query(StoreZone).filter(StoreZone.id == zone_id).first()
+    if not zone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Không tìm thấy vùng theo dõi với ID {zone_id}"
+        )
+    return zone
+
+
+def create_zone(db: Session, payload: ZoneCreate) -> StoreZone:
+    # Tự động chọn màu nếu không truyền
+    color = payload.color
+    if not color or color == "#3b82f6":
+        used = {z.color for z in db.query(StoreZone.color).all()}
+        color = next((c for c in ZONE_COLORS if c not in used), ZONE_COLORS[0])
+
+    zone = StoreZone(
+        zone_name=payload.zone_name.strip(),
+        zone_type=payload.zone_type,
+        description=payload.description,
+        polygon=[p.model_dump() for p in payload.polygon],
+        color=payload.color or color,
+        total_visits=0,
+    )
+    db.add(zone)
+    db.commit()
+    db.refresh(zone)
+    return zone
+
+
+def update_zone(db: Session, zone_id: int, payload: ZoneUpdate) -> StoreZone:
+    zone = get_zone_by_id(db, zone_id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    # Serialize polygon list[PointSchema] → list[dict]
+    if "polygon" in update_data and update_data["polygon"]:
+        update_data["polygon"] = [p.model_dump() for p in payload.polygon]
+
+    for key, value in update_data.items():
+        setattr(zone, key, value)
+
+    db.commit()
+    db.refresh(zone)
+    return zone
+
+
+def delete_zone(db: Session, zone_id: int) -> None:
+    zone = get_zone_by_id(db, zone_id)
+    db.delete(zone)
+    db.commit()
+
+
+# ─── Movement Tracks ──────────────────────────────────────────────────────────
+
+def get_movement_tracks(
+    db: Session,
+    person_id: str | None = None,
+    zone_id: int | None = None,
+    limit: int = 50,
+) -> list[dict]:
+    """
+    Trả về danh sách tracks gom nhóm theo visit_session_id.
+    Mỗi track = 1 lượt ghé = nhiều MovementTrack points.
+    """
+    # Lấy các visit_session có track data
+    session_query = (
+        db.query(
+            MovementTrack.visit_session_id,
+            MovementTrack.person_profile_id,
+            func.min(MovementTrack.tracked_at).label("entry_time"),
+            func.max(MovementTrack.tracked_at).label("exit_time"),
+        )
+        .group_by(MovementTrack.visit_session_id, MovementTrack.person_profile_id)
+        .order_by(func.min(MovementTrack.tracked_at).desc())
+        .limit(limit)
+    )
+
+    if zone_id:
+        session_query = session_query.filter(MovementTrack.zone_id == zone_id)
+
+    sessions = session_query.all()
+
+    colors = ZONE_COLORS
+    result = []
+
+    for idx, sess in enumerate(sessions):
+        # Lấy person_profile
+        profile = db.query(PersonProfile).filter(
+            PersonProfile.id == sess.person_profile_id
+        ).first()
+
+        if not profile:
+            continue
+
+        # Filter theo person_id nếu có
+        if person_id and person_id.lower() not in profile.anonymous_code.lower():
+            continue
+
+        # Lấy tất cả points của session này
+        points_raw = (
+            db.query(MovementTrack)
+            .filter(MovementTrack.visit_session_id == sess.visit_session_id)
+            .order_by(MovementTrack.tracked_at)
+            .all()
+        )
+
+        points = [
+            {
+                "x": p.position_x or 0.0,
+                "y": p.position_y or 0.0,
+                "zone_id": p.zone_id,
+                "tracked_at": p.tracked_at,
+            }
+            for p in points_raw
+        ]
+
+        zones_visited = list({p["zone_id"] for p in points if p["zone_id"]})
+
+        # Tính duration
+        entry = sess.entry_time
+        exit_ = sess.exit_time
+        duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
+
+        result.append({
+            "id": sess.visit_session_id,
+            "person_profile_id": sess.person_profile_id,
+            "anonymous_id": profile.anonymous_code,
+            "visit_session_id": sess.visit_session_id,
+            "color": colors[idx % len(colors)],
+            "entry_time": entry,
+            "exit_time": exit_,
+            "duration_seconds": duration,
+            "zones_visited": zones_visited,
+            "points": points,
+        })
+
+    return result
+
+
+def get_track_by_session_id(db: Session, session_id: int) -> dict:
+    """Lấy chi tiết 1 track theo visit_session_id."""
+    tracks = get_movement_tracks(db=db, limit=1000)
+    for t in tracks:
+        if t["visit_session_id"] == session_id:
+            return t
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Không tìm thấy track với session ID {session_id}"
+    )
+
+
+# ─── Zone Visits ──────────────────────────────────────────────────────────────
+
+def get_zone_visits(db: Session, zone_id: int | None = None) -> list[dict]:
+    """Trả về danh sách zone visits, join thêm anonymous_code và zone_name."""
+    query = (
+        db.query(ZoneVisit, PersonProfile.anonymous_code, StoreZone.zone_name)
+        .join(PersonProfile, PersonProfile.id == ZoneVisit.person_profile_id)
+        .join(StoreZone, StoreZone.id == ZoneVisit.zone_id)
+        .order_by(ZoneVisit.enter_time.desc())
+    )
+
+    if zone_id:
+        query = query.filter(ZoneVisit.zone_id == zone_id)
+
+    rows = query.limit(200).all()
+
+    return [
+        {
+            "id": visit.id,
+            "zone_id": visit.zone_id,
+            "zone_name": zone_name,
+            "person_profile_id": visit.person_profile_id,
+            "anonymous_id": anonymous_code,
+            "enter_time": visit.enter_time,
+            "leave_time": visit.leave_time,
+            "duration_seconds": visit.duration_seconds,
+        }
+        for visit, anonymous_code, zone_name in rows
+    ]
