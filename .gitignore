@@ -1,5 +1,2 @@
 .vscode/
 .env
-# Bỏ qua các file mô hình AI nặng
-app/services/ai/models/*.onnx
-app/services/ai/models/*.pt
