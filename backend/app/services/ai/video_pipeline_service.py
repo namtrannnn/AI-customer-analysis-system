@@ -1,308 +1,196 @@
+import os
 import cv2
+import shutil
+from typing import List, Dict, Optional
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
 
-from app.services.ai.face_detection_service import FaceDetectionService
+# Import các service AI lõi
 from app.services.ai.frame_extractor_service import FrameExtractorService
-from app.services.ai.person_detection_service import person_detector
+from app.services.ai.tracking_service import tracker_service  # AI-09 (Tracking)
+from app.services.ai.face_detection_service import FaceDetectionService, PersonDetectionInput  # AI-03
+from app.services.ai.face_embedding_service import FaceEmbeddingService, face_embedder, FaceEmbeddingResult  # AI-04
 
 
 @dataclass
-class DetectedCustomerSummary:
-    anonymous_id: str
-    customer_type: str
-    confidence: float
+class ProcessedCustomer:
+    """
+    Data Transfer Object (DTO) chứa toàn bộ thông tin về 1 khách hàng 
+    sau khi đã đi qua toàn bộ Pipeline.
+    """
+    track_id: int
     observation_count: int
-    face_detected: bool
-
-
-@dataclass
-class VideoPipelineResult:
-    total_frames: int
-    sampled_frames: int
-    raw_person_detections: int
-    raw_face_detections: int
-    detected_customers: List[DetectedCustomerSummary]
+    best_face_image_path: Optional[str]
+    embedding: Optional[List[float]]
+    face_confidence: Optional[float]
 
 
 class VideoProcessingPipelineService:
     """
-    AI-06 Video Processing Pipeline
-
-    Pipeline hiện tại nối các bước:
-    - AI-01: trích frame từ video tạm.
-    - AI-02: phát hiện người trên từng frame.
-    - AI-03: tìm khuôn mặt trong vùng người đã phát hiện.
-
-    Lưu ý:
-    - Chưa tích hợp embedding/matching nên tạm thời gán tất cả là `new`.
-    - Việc gom người duy nhất đang dùng heuristic theo bbox giữa các frame đã sample.
+    AI-06 Video Processing Pipeline (Full Flow)
+    
+    Luồng xử lý:
+    1. AI-01: Trích xuất Frame từ Video.
+    2. AI-09: Tracking người (Gán ID cố định xuyên suốt frame).
+    3. AI-03: Cắt mặt từ tất cả các lần xuất hiện của người đó.
+    4. Best Face Selection: Chọn ra 1 tấm mặt đẹp nhất/to nhất cho mỗi ID.
+    5. AI-04: Trích xuất Vector (Embedding) từ tấm ảnh đẹp nhất đó.
     """
 
-    def __init__(
-        self,
-        frame_extractor: Optional[FrameExtractorService] = None,
-        face_detector: Optional[FaceDetectionService] = None,
-        person_match_threshold: float = 0.45,
-        max_frame_gap: int = 2,
-    ):
-        self.frame_extractor = frame_extractor or FrameExtractorService()
-        self.face_detector = face_detector or FaceDetectionService()
-        self.person_detector = person_detector
-        self.person_match_threshold = person_match_threshold
-        self.max_frame_gap = max_frame_gap
+    def __init__(self, yunet_model_path: str = None, arcface_model_path: str = None):
+        self.frame_extractor = FrameExtractorService()
+        self.tracker = tracker_service
+        self.face_embedder = FaceEmbeddingService(
+            model_path=arcface_model_path,
+            model_name="arcface",
+            input_size=(112, 112) # Ép chuẩn kích thước của ArcFace
+        )
+
+        # Khởi tạo AI-03 với cấu hình đã test thành công
+        # Bạn thay đường dẫn tuyệt đối vào đây nếu cần thiết
+        self.face_detector = FaceDetectionService(
+            yunet_model_path=yunet_model_path,
+            yunet_score_threshold=0.6
+        )
 
     def process_video(
-        self,
-        video_path: str,
-        frame_interval: Optional[int] = None,
-        target_fps: Optional[float] = 1.0,
-        max_frames: Optional[int] = None,
-        max_faces_per_person: Optional[int] = 1,
-    ) -> VideoPipelineResult:
-        with (
-            self.frame_extractor.create_temp_frame_dir() as frame_dir,
-            self.face_detector.create_temp_face_dir() as face_dir,
-        ):
+        self, 
+        video_path: str, 
+        output_face_dir: str = "./pipeline_faces",
+        target_fps: float = 1.0
+    ) -> List[ProcessedCustomer]:
+        
+        # 0. Setup thư mục lưu ảnh khuôn mặt (Xóa cũ tạo mới)
+        if os.path.exists(output_face_dir):
+            shutil.rmtree(output_face_dir)
+        os.makedirs(output_face_dir, exist_ok=True)
+
+        print("\n" + "="*50)
+        print("KHỞI ĐỘNG AI PIPELINE (AI-01 -> AI-04)")
+        print("="*50)
+
+        # 1. BƯỚC 1: TRÍCH XUẤT FRAME (AI-01)
+        print("[AI-01] Đang trích xuất frames từ video...")
+        with self.frame_extractor.create_temp_frame_dir() as frame_dir:
             frame_result = self.frame_extractor.extract_frames(
-                video_path=video_path,
-                output_dir=frame_dir,
-                frame_interval=frame_interval,
-                target_fps=target_fps,
-                max_frames=max_frames,
+                video_path, frame_dir, target_fps=target_fps
             )
 
-            all_person_detections: List[dict] = []
-            frame_timestamps: Dict[int, float] = {
-                frame.frame_index: frame.timestamp_seconds
-                for frame in frame_result.frames
-            }
+            person_inputs = []
+            track_observation_counts = {}
 
-            for frame in frame_result.frames:
-                image = cv2.imread(frame.image_path)
-
+            # 2. BƯỚC 2: TRACKING NGƯỜI DÙNG BYTE-TRACK (AI-09)
+            print(f"[AI-02/09] Đang quét Tracking trên {frame_result.extracted_count} frames...")
+            for frame_data in frame_result.frames:
+                image = cv2.imread(frame_data.image_path)
                 if image is None:
                     continue
 
-                person_detections = self.person_detector.detect_persons(
+                tracked_persons = self.tracker.track_persons_in_frame(
                     frame=image,
-                    frame_index=frame.frame_index,
-                    image_path=frame.image_path,
+                    frame_index=frame_data.frame_index,
+                    img_path=frame_data.image_path
                 )
-                all_person_detections.extend(person_detections)
 
+                for p in tracked_persons:
+                    track_id = p["track_id"]
+                    # Đếm số frame người này xuất hiện
+                    track_observation_counts[track_id] = track_observation_counts.get(track_id, 0) + 1
+
+                    # Nạp dữ liệu vào hàng đợi cho AI-03
+                    person_inputs.append(
+                        PersonDetectionInput(
+                            frame_index=p["frame_index"],
+                            image_path=p["img_path"],
+                            person_index=track_id, # Dùng track_id làm nhân dạng xuyên suốt
+                            bbox=p["bbox"],
+                            confidence=p.get("confidence")
+                        )
+                    )
+
+            # 3. BƯỚC 3: CẮT KHUÔN MẶT BẰNG YUNET (AI-03)
+            print(f"[AI-03] Đang phân tích khuôn mặt từ {len(person_inputs)} vùng cơ thể...")
             face_result = self.face_detector.detect_faces_from_person_detections(
-                person_detections=all_person_detections,
-                output_dir=face_dir,
-                max_faces_per_person=max_faces_per_person,
+                person_detections=person_inputs,
+                output_dir=output_face_dir,
+                max_faces_per_person=1,
+                min_quality_score=0.0 # Để mở hoàn toàn bộ lọc
             )
 
-            face_lookup = {
-                (face.frame_index, face.person_index): face
-                for face in face_result.faces
-                if face.person_index is not None
-            }
+            # 4. BƯỚC 4: BEST FACE SELECTION (Lọc lấy ảnh đẹp nhất cho mỗi người)
+            print(f"[Pipeline] Đang tuyển chọn khuôn mặt tốt nhất (Best Face Selection)...")
+            faces_by_track_id = {}
+            for face in face_result.faces:
+                t_id = face.person_index
+                if t_id not in faces_by_track_id:
+                    faces_by_track_id[t_id] = []
+                faces_by_track_id[t_id].append(face)
 
-            detected_customers = self._aggregate_detected_customers(
-                person_detections=all_person_detections,
-                face_lookup=face_lookup,
-                frame_timestamps=frame_timestamps,
-            )
+            best_faces = []
+            for t_id, faces in faces_by_track_id.items():
+                # Tiêu chí: Diện tích ảnh (độ to/rõ) nhân với điểm tự tin
+                def score_face(f):
+                    area = f.width * f.height
+                    conf = f.confidence if f.confidence else 0.5
+                    return area * conf
 
-            return VideoPipelineResult(
-                total_frames=frame_result.total_frames,
-                sampled_frames=frame_result.extracted_count,
-                raw_person_detections=len(all_person_detections),
-                raw_face_detections=face_result.detected_count,
-                detected_customers=detected_customers,
-            )
+                # Sắp xếp và lấy "Hoa hậu" đứng đầu
+                best_face = sorted(faces, key=score_face, reverse=True)[0]
+                best_faces.append(best_face)
 
-    def _aggregate_detected_customers(
-        self,
-        person_detections: List[dict],
-        face_lookup: Dict[Tuple[int, int], object],
-        frame_timestamps: Dict[int, float],
-    ) -> List[DetectedCustomerSummary]:
-        clusters: List[dict] = []
+            # 5. BƯỚC 5: TRÍCH XUẤT VECTOR (AI-04)
+            print(f"[AI-04] Đang trích xuất Vector cho {len(best_faces)} khuôn mặt duy nhất...")
+            embedding_results = self.face_embedder.extract_embeddings_from_detected_faces(best_faces)
 
-        sorted_detections = sorted(
-            person_detections,
-            key=lambda detection: (
-                int(detection.get("frame_index", 0)),
-                int(detection.get("person_index", 0)),
-            ),
-        )
+            # Map vector vào track_id tương ứng
+            embedding_dict = {res.person_index: res.embedding for res in embedding_results}
 
-        for detection in sorted_detections:
-            frame_index = int(detection.get("frame_index", 0))
-            person_index = int(detection.get("person_index", 0))
-            bbox = detection.get("bbox")
+            # 6. ĐÓNG GÓI KẾT QUẢ TRẢ VỀ
+            final_customers = []
+            MIN_FRAMES_OBSERVED = 5  # Lọc rác chớp nháy
+            MIN_FACE_CONFIDENCE = 0.7 # BỘ LỌC CHỐNG ẢO GIÁC ÁO/SÀN NHÀ
+            
+            for track_id, count in track_observation_counts.items():
+                if count < MIN_FRAMES_OBSERVED:
+                    continue
+                    
+                b_face = next((f for f in best_faces if f.person_index == track_id), None)
 
-            if not bbox or len(bbox) != 4:
-                continue
+                if b_face is None:
+                    continue
 
-            best_match_index = self._find_matching_cluster(
-                bbox=bbox,
-                frame_index=frame_index,
-                clusters=clusters,
-            )
+                # LOẠI BỎ KHÁCH HÀNG KHÔNG CÓ MẶT RÕ RÀNG
+                # Nếu "mặt tốt nhất" mà điểm vẫn dưới 0.7, chứng tỏ khách này 
+                # luôn quay lưng hoặc AI bắt nhầm nếp nhăn áo. Ta không lấy Vector của họ!
+                if b_face.confidence < MIN_FACE_CONFIDENCE:
+                    continue
 
-            if best_match_index is None:
-                clusters.append(
-                    {
-                        "confidence_sum": float(detection.get("confidence", 0.0)),
-                        "observation_count": 1,
-                        "last_bbox": bbox,
-                        "last_frame_index": frame_index,
-                        "last_seen_at": frame_timestamps.get(frame_index, 0.0),
-                        "face_detected": (frame_index, person_index) in face_lookup,
-                    }
-                )
-                continue
+                final_customers.append(ProcessedCustomer(
+                    track_id=track_id,
+                    observation_count=count,
+                    best_face_image_path=b_face.face_image_path,
+                    embedding=embedding_dict.get(track_id),
+                    face_confidence=b_face.confidence
+                ))
 
-            cluster = clusters[best_match_index]
-            cluster["confidence_sum"] += float(detection.get("confidence", 0.0))
-            cluster["observation_count"] += 1
-            cluster["last_bbox"] = bbox
-            cluster["last_frame_index"] = frame_index
-            cluster["last_seen_at"] = frame_timestamps.get(frame_index, 0.0)
-            cluster["face_detected"] = (
-                cluster["face_detected"]
-                or (frame_index, person_index) in face_lookup
-            )
+            print("XỬ LÝ HOÀN TẤT!")
+            return final_customers
 
-        detected_customers: List[DetectedCustomerSummary] = []
+# 1. Lấy đường dẫn tuyệt đối của THƯ MỤC đang chứa file hiện tại (video_pipeline_service.py)
+# Dù chạy trên máy ai, nó cũng sẽ tự tìm ra đúng thư mục đó.
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-        for index, cluster in enumerate(clusters, start=1):
-            average_confidence = (
-                cluster["confidence_sum"] / cluster["observation_count"]
-                if cluster["observation_count"] > 0
-                else 0.0
-            )
+# 2. Từ thư mục hiện tại, đi vào thư mục con "models" và chỉ định tên file ONNX
+YUNET_MODEL_PATH = os.path.join(CURRENT_DIR, "models", "face_detection_yunet_2023mar.onnx")
+ARCFACE_MODEL_PATH = os.path.join(CURRENT_DIR, "models", "arcface.onnx")
 
-            detected_customers.append(
-                DetectedCustomerSummary(
-                    anonymous_id=f"ANO_{index:03d}",
-                    customer_type="new",
-                    confidence=round(average_confidence, 3),
-                    observation_count=cluster["observation_count"],
-                    face_detected=bool(cluster["face_detected"]),
-                )
-            )
+# (Tùy chọn) Thêm một chút log để kiểm tra file có thật sự nằm ở đó không khi khởi động
+if not os.path.exists(YUNET_MODEL_PATH):
+    print(f"CẢNH BÁO: Không tìm thấy file YuNet tại {YUNET_MODEL_PATH}")
+if not os.path.exists(ARCFACE_MODEL_PATH):
+    print(f"CẢNH BÁO: Không tìm thấy file ArcFace tại {ARCFACE_MODEL_PATH}")
 
-        return detected_customers
-
-    def _find_matching_cluster(
-        self,
-        bbox: List[float],
-        frame_index: int,
-        clusters: List[dict],
-    ) -> Optional[int]:
-        best_match_index: Optional[int] = None
-        best_score = 0.0
-
-        for index, cluster in enumerate(clusters):
-            previous_frame_index = int(cluster["last_frame_index"])
-            frame_gap = frame_index - previous_frame_index
-
-            if frame_gap < 0 or frame_gap > self.max_frame_gap:
-                continue
-
-            score = self._calculate_match_score(
-                current_bbox=bbox,
-                previous_bbox=cluster["last_bbox"],
-                frame_gap=frame_gap,
-            )
-
-            if score >= self.person_match_threshold and score > best_score:
-                best_score = score
-                best_match_index = index
-
-        return best_match_index
-
-    def _calculate_match_score(
-        self,
-        current_bbox: List[float],
-        previous_bbox: List[float],
-        frame_gap: int,
-    ) -> float:
-        iou_score = self._calculate_iou(current_bbox, previous_bbox)
-        center_distance_score = 1.0 - min(
-            self._calculate_center_distance_ratio(current_bbox, previous_bbox),
-            1.0,
-        )
-        size_similarity_score = self._calculate_size_similarity(
-            current_bbox,
-            previous_bbox,
-        )
-        frame_gap_penalty = max(0.0, 1.0 - frame_gap * 0.15)
-
-        return (
-            iou_score * 0.5
-            + center_distance_score * 0.3
-            + size_similarity_score * 0.2
-        ) * frame_gap_penalty
-
-    def _calculate_iou(self, first_bbox: List[float], second_bbox: List[float]) -> float:
-        ax1, ay1, ax2, ay2 = first_bbox
-        bx1, by1, bx2, by2 = second_bbox
-
-        inter_x1 = max(ax1, bx1)
-        inter_y1 = max(ay1, by1)
-        inter_x2 = min(ax2, bx2)
-        inter_y2 = min(ay2, by2)
-
-        if inter_x2 <= inter_x1 or inter_y2 <= inter_y1:
-            return 0.0
-
-        intersection = (inter_x2 - inter_x1) * (inter_y2 - inter_y1)
-        first_area = max((ax2 - ax1) * (ay2 - ay1), 1.0)
-        second_area = max((bx2 - bx1) * (by2 - by1), 1.0)
-
-        return intersection / max(first_area + second_area - intersection, 1.0)
-
-    def _calculate_center_distance_ratio(
-        self,
-        first_bbox: List[float],
-        second_bbox: List[float],
-    ) -> float:
-        first_center_x = (first_bbox[0] + first_bbox[2]) / 2
-        first_center_y = (first_bbox[1] + first_bbox[3]) / 2
-        second_center_x = (second_bbox[0] + second_bbox[2]) / 2
-        second_center_y = (second_bbox[1] + second_bbox[3]) / 2
-
-        center_distance = (
-            (first_center_x - second_center_x) ** 2
-            + (first_center_y - second_center_y) ** 2
-        ) ** 0.5
-
-        first_width = max(first_bbox[2] - first_bbox[0], 1.0)
-        first_height = max(first_bbox[3] - first_bbox[1], 1.0)
-        second_width = max(second_bbox[2] - second_bbox[0], 1.0)
-        second_height = max(second_bbox[3] - second_bbox[1], 1.0)
-        normalizer = max(
-            (first_width + second_width) / 2,
-            (first_height + second_height) / 2,
-            1.0,
-        )
-
-        return center_distance / normalizer
-
-    def _calculate_size_similarity(
-        self,
-        first_bbox: List[float],
-        second_bbox: List[float],
-    ) -> float:
-        first_area = max(
-            (first_bbox[2] - first_bbox[0]) * (first_bbox[3] - first_bbox[1]),
-            1.0,
-        )
-        second_area = max(
-            (second_bbox[2] - second_bbox[0]) * (second_bbox[3] - second_bbox[1]),
-            1.0,
-        )
-
-        return min(first_area, second_area) / max(first_area, second_area)
-
-
-video_pipeline_service = VideoProcessingPipelineService()
+# 3. Khởi tạo Service với đường dẫn đã được tính toán tự động
+video_pipeline_service = VideoProcessingPipelineService(
+    yunet_model_path=YUNET_MODEL_PATH,
+    arcface_model_path=ARCFACE_MODEL_PATH
+)
