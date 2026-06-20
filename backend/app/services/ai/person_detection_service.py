@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from ultralytics import YOLO
 
@@ -5,7 +7,7 @@ from ultralytics import YOLO
 class PersonDetectionService:
     def __init__(
         self,
-        model_path: str = "yolov8s.pt",
+        model_path: str,
         default_imgsz: int = 1280,
         default_iou_threshold: float = 0.45,
         min_person_width: int = 40,
@@ -209,4 +211,14 @@ class PersonDetectionService:
         return intersection / smaller_area
 
 ## Khởi tạo sẵn một instance (Singleton) để import và dùng chung ở các file khác
-person_detector = PersonDetectionService()
+
+# Tự động lấy đường dẫn
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Trỏ thẳng vào file đã có sẵn trong models
+YOLO_MODEL_PATH = os.path.join(CURRENT_DIR, "models", "yolov8s.pt")
+
+# Khởi tạo Singleton với đường dẫn chuẩn
+person_detector = PersonDetectionService(
+    model_path=YOLO_MODEL_PATH  # Bắt buộc phải truyền đường dẫn tuyệt đối vào đây
+)
