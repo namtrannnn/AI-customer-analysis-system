@@ -91,6 +91,7 @@ export async function uploadAndAnalyzeVideo(
       };
     }>("/videos/upload", form, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 10 * 60 * 1000, // 10 phút — video dài cần nhiều thời gian xử lý
     });
 
     clearInterval(progressInterval);
