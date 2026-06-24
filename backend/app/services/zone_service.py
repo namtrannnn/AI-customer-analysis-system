@@ -88,34 +88,33 @@ def get_movement_tracks(
     limit: int = 50,
 ) -> list[dict]:
     """
-    Trả về danh sách tracks gom nhóm theo visit_session_id.
-    Mỗi track = 1 lượt ghé = nhiều MovementTrack points.
+    Cách 2: Group theo person_profile_id — mỗi person = 1 đường đi liên tục.
+    Merge tất cả track_id của cùng 1 người thành 1 đường đi duy nhất.
     """
-    # Lấy các visit_session có track data
-    session_query = (
+    # Lấy danh sách person_profile_id có trong movement_tracks
+    person_query = (
         db.query(
-            MovementTrack.visit_session_id,
             MovementTrack.person_profile_id,
             func.min(MovementTrack.tracked_at).label("entry_time"),
             func.max(MovementTrack.tracked_at).label("exit_time"),
+            func.count(MovementTrack.id).label("point_count"),
         )
-        .group_by(MovementTrack.visit_session_id, MovementTrack.person_profile_id)
+        .group_by(MovementTrack.person_profile_id)
         .order_by(func.min(MovementTrack.tracked_at).desc())
         .limit(limit)
     )
 
     if zone_id:
-        session_query = session_query.filter(MovementTrack.zone_id == zone_id)
+        person_query = person_query.filter(MovementTrack.zone_id == zone_id)
 
-    sessions = session_query.all()
+    persons = person_query.all()
 
     colors = ZONE_COLORS
     result = []
 
-    for idx, sess in enumerate(sessions):
-        # Lấy person_profile
+    for idx, person_row in enumerate(persons):
         profile = db.query(PersonProfile).filter(
-            PersonProfile.id == sess.person_profile_id
+            PersonProfile.id == person_row.person_profile_id
         ).first()
 
         if not profile:
@@ -125,10 +124,11 @@ def get_movement_tracks(
         if person_id and person_id.lower() not in profile.anonymous_code.lower():
             continue
 
-        # Lấy tất cả points của session này
+        # Lấy TẤT CẢ points của người này (tất cả track_id)
+        # Sort theo tracked_at để đường đi theo thứ tự thời gian
         points_raw = (
             db.query(MovementTrack)
-            .filter(MovementTrack.visit_session_id == sess.visit_session_id)
+            .filter(MovementTrack.person_profile_id == person_row.person_profile_id)
             .order_by(MovementTrack.tracked_at)
             .all()
         )
@@ -145,16 +145,15 @@ def get_movement_tracks(
 
         zones_visited = list({p["zone_id"] for p in points if p["zone_id"]})
 
-        # Tính duration
-        entry = sess.entry_time
-        exit_ = sess.exit_time
+        entry = person_row.entry_time
+        exit_ = person_row.exit_time
         duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
 
         result.append({
-            "id": sess.visit_session_id,
-            "person_profile_id": sess.person_profile_id,
+            "id": person_row.person_profile_id,  # dùng profile_id làm id
+            "person_profile_id": person_row.person_profile_id,
             "anonymous_id": profile.anonymous_code,
-            "visit_session_id": sess.visit_session_id,
+            "visit_session_id": person_row.person_profile_id,  # compat với FE
             "color": colors[idx % len(colors)],
             "entry_time": entry,
             "exit_time": exit_,

@@ -1,19 +1,13 @@
 """
 AI-14: Movement Track Pipeline Service
-
-Orchestrate toàn bộ luồng tracking cho 1 video:
-  Frame Extractor → Person Tracking → ROI Check → Zone Enter/Exit → Aggregate
-
-Output: MovementPipelineResult — sẵn sàng để lưu vào DB.
 """
 
 import time
 import tempfile
+import cv2
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 from typing import Optional
-
-import numpy as np
 
 from app.services.ai.frame_extractor_service import FrameExtractorService
 from app.services.ai.tracking_service import TrackingService, tracker_service
@@ -29,10 +23,9 @@ from app.services.ai.zone_enter_exit_service import (
 
 @dataclass
 class TrackPoint:
-    """1 điểm trong đường đi của 1 track."""
     track_id: int
-    x: float          # relative 0..1
-    y: float          # relative 0..1
+    x: float
+    y: float
     zone_id: Optional[int]
     tracked_at: datetime
     frame_index: int
@@ -40,20 +33,17 @@ class TrackPoint:
 
 @dataclass
 class TrackResult:
-    """Kết quả đầy đủ của 1 track (1 người xuyên suốt video)."""
     track_id: int
-    points: list[TrackPoint] = field(default_factory=list)
-    zones_visited: list[int] = field(default_factory=list)
+    points: list = field(default_factory=list)
+    zones_visited: list = field(default_factory=list)
     entry_time: Optional[datetime] = None
     exit_time: Optional[datetime] = None
     duration_seconds: Optional[int] = None
-    # anonymous_id sẽ được gán sau khi có DB lookup
     anonymous_id: Optional[str] = None
 
 
 @dataclass
 class ZoneVisitData:
-    """1 lần vào/ra zone của 1 track."""
     track_id: int
     zone_id: int
     enter_time: Optional[datetime]
@@ -65,10 +55,9 @@ class ZoneVisitData:
 
 @dataclass
 class MovementPipelineResult:
-    """Kết quả toàn bộ pipeline tracking."""
-    tracks: list[TrackResult] = field(default_factory=list)
-    zone_visits: list[ZoneVisitData] = field(default_factory=list)
-    zone_events: list[ZoneEvent] = field(default_factory=list)
+    tracks: list = field(default_factory=list)
+    zone_visits: list = field(default_factory=list)
+    zone_events: list = field(default_factory=list)
     total_persons: int = 0
     total_frames_processed: int = 0
     processing_time_ms: int = 0
@@ -79,16 +68,6 @@ class MovementPipelineResult:
 # ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 class MovementTrackPipelineService:
-    """
-    AI-14: Orchestrate tracking pipeline cho 1 video.
-
-    Nhận:
-        video_path: đường dẫn file video (temp file)
-        zones: list dict zone từ DB [{"id": 1, "polygon": [...], ...}]
-
-    Trả về:
-        MovementPipelineResult
-    """
 
     def __init__(
         self,
@@ -110,13 +89,7 @@ class MovementTrackPipelineService:
         video_path: str,
         zones: list[dict],
     ) -> MovementPipelineResult:
-        """
-        Chạy toàn bộ tracking pipeline.
 
-        Args:
-            video_path: đường dẫn file video
-            zones: list zone dicts [{"id", "zone_name", "polygon", ...}]
-        """
         start_ms = int(time.time() * 1000)
 
         result = MovementPipelineResult()
@@ -124,18 +97,16 @@ class MovementTrackPipelineService:
             min_frames_in_zone=self.min_frames_in_zone
         )
 
-        # track_id → list[TrackPoint]
         track_points: dict[int, list[TrackPoint]] = {}
-        # track_id → set[zone_id]
         track_zones: dict[int, set[int]] = {}
-        # track_id → first timestamp
         track_entry: dict[int, datetime] = {}
-        # track_id → last timestamp
         track_exit: dict[int, datetime] = {}
-
         all_zone_events: list[ZoneEvent] = []
 
-        # ── Extract frames ─────────────────────────────────────────────────────
+        # Thời điểm bắt đầu xử lý video = now
+        # timestamp của mỗi frame = now + offset giây trong video
+        video_start_time = datetime.now()
+
         with tempfile.TemporaryDirectory(prefix="tracking_frames_") as frame_dir:
             extraction = self.frame_extractor.extract_frames(
                 video_path=video_path,
@@ -147,9 +118,6 @@ class MovementTrackPipelineService:
             result.video_duration_seconds = extraction.duration_seconds
             result.total_frames_processed = extraction.extracted_count
 
-            import cv2
-
-            # ── Process từng frame ─────────────────────────────────────────────
             for ef in extraction.frames:
                 frame = cv2.imread(ef.image_path)
                 if frame is None:
@@ -157,13 +125,10 @@ class MovementTrackPipelineService:
 
                 frame_h, frame_w = frame.shape[:2]
 
-                # Timestamp của frame
-                ts = datetime.fromtimestamp(
-                    ef.timestamp_seconds,
-                    tz=timezone.utc
-                ).replace(tzinfo=None)
+                # Timestamp thực tế = lúc bắt đầu + offset trong video
+                ts = video_start_time + timedelta(seconds=ef.timestamp_seconds)
 
-                # ── AI-09: Track persons ───────────────────────────────────────
+                # AI-09: Track persons
                 tracked = self.tracking_svc.track_persons_in_frame(
                     frame=frame,
                     frame_index=ef.frame_index,
@@ -174,8 +139,6 @@ class MovementTrackPipelineService:
                 if not tracked:
                     continue
 
-                # ── AI-11: Check zone cho từng person ─────────────────────────
-                # Convert bbox pixel → relative
                 positions_this_frame: list[TrackPosition] = []
 
                 for det in tracked:
@@ -185,11 +148,11 @@ class MovementTrackPipelineService:
                     )
                     cx, cy = self.roi_svc.bbox_centroid(nx1, ny1, nx2, ny2)
 
+                    # AI-11: Check zone
                     zone_result = self.roi_svc.find_zone_for_point(cx, cy, zones)
                     zone_id = zone_result.zone_id
                     track_id = det["track_id"]
 
-                    # Ghi track point
                     point = TrackPoint(
                         track_id=track_id,
                         x=round(cx, 4),
@@ -219,15 +182,15 @@ class MovementTrackPipelineService:
                         frame_index=ef.frame_index,
                     ))
 
-                # ── AI-13: Detect enter/exit events ───────────────────────────
+                # AI-13: Detect enter/exit events
                 events = zone_enter_exit.process_frame_positions(positions_this_frame)
                 all_zone_events.extend(events)
 
-        # ── Finalize: exit events cho track còn trong zone ─────────────────────
+        # Finalize
         final_events = zone_enter_exit.finalize()
         all_zone_events.extend(final_events)
 
-        # ── Aggregate tracks ───────────────────────────────────────────────────
+        # Aggregate tracks
         for track_id, points in track_points.items():
             if not points:
                 continue
@@ -247,19 +210,15 @@ class MovementTrackPipelineService:
                 duration_seconds=duration,
             ))
 
-        # ── Zone visits từ enter/exit events ──────────────────────────────────
+        # Zone visits
         zone_visit_summary = zone_enter_exit.get_zone_visit_summary()
         for v in zone_visit_summary:
-            enter_t = v.get("enter_time")
-            leave_t = v.get("leave_time")
-            dur = v.get("duration_seconds")
-
             result.zone_visits.append(ZoneVisitData(
                 track_id=v["track_id"],
                 zone_id=v["zone_id"],
-                enter_time=enter_t,
-                leave_time=leave_t,
-                duration_seconds=dur,
+                enter_time=v.get("enter_time"),
+                leave_time=v.get("leave_time"),
+                duration_seconds=v.get("duration_seconds"),
                 enter_frame=v.get("enter_frame"),
                 leave_frame=v.get("leave_frame"),
             ))

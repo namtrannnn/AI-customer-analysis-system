@@ -218,6 +218,8 @@ class VideoProcessingPipelineService:
                             "frame_index": frame_data.frame_index,
                             "track_id": track_id,
                             "bbox": bbox,
+                            "frame_width": image.shape[1],
+                            "frame_height": image.shape[0],
                         })
 
                         already_assigned = track_id in track_to_profile
@@ -386,6 +388,7 @@ class VideoProcessingPipelineService:
                             continue
 
                         # ====================================================
+                       
                         # CASE 2: TRACK MỚI, TÌM PROFILE PHÙ HỢP
                         # ====================================================
                         (
@@ -402,7 +405,17 @@ class VideoProcessingPipelineService:
                             current_track_frame_bboxes=current_track_frame_bboxes,
                             appearance_service=self.appearance_service,
                         )
-
+                        print(
+                            f"[REID_CHECK] "
+                            f"track={track_id} "
+                            f"obs={obs_count} "
+                            f"best_profile={best_profile_id} "
+                            f"total={best_total_score:.3f} "
+                            f"face={best_face_score:.3f} "
+                            f"app={best_app_score:.3f} "
+                            f"margin={best_margin:.3f} "
+                            f"face_conf={face_conf:.3f}"
+                        )
                         should_assign_existing = False
 
                         if best_profile_id is not None:
@@ -456,6 +469,10 @@ class VideoProcessingPipelineService:
                                     should_assign_existing = True
 
                         if should_assign_existing and best_profile_id is not None:
+                            print(
+                                f"[REID_MATCH] "
+                                f"track={track_id} -> {best_profile_id}"
+                            )
                             profile_id = best_profile_id
                             track_to_profile[track_id] = profile_id
 
@@ -528,6 +545,15 @@ class VideoProcessingPipelineService:
                         )
 
                         if can_create_new_profile_now or can_create_from_best_sample:
+                            print(
+                                f"[REID_NEW_PROFILE] "
+                                f"track={track_id} "
+                                f"create_new=True "
+                                f"best_profile={best_profile_id} "
+                                f"total={best_total_score:.3f} "
+                                f"face={best_face_score:.3f} "
+                                f"app={best_app_score:.3f}"
+                            )
                             if can_create_from_best_sample:
                                 sample = best_sample
                             else:
@@ -749,6 +775,10 @@ class VideoProcessingPipelineService:
                     "valid_tracklets": len(track_to_profile),
                     "merged_profiles": merged_profiles,
                     "track_to_profile": track_to_profile,
+                    # Dùng để tính đường đi — không cần chạy ByteTrack lần 2
+                    "debug_person_records": debug_person_records,
+                    "video_fps": frame_result.video_fps,
+                    "video_duration": frame_result.duration_seconds,
                 }
 
         def _safe_handoff_merge_profiles(self, profiles: List[Dict]) -> List[Dict]:

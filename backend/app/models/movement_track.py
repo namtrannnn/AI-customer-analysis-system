@@ -20,11 +20,6 @@ class MovementTrack(Base):
         nullable=False,
         index=True,
     )
-    camera_id: Mapped[int | None] = mapped_column(
-        BigInteger,
-        ForeignKey("cameras.id", ondelete="SET NULL"),
-        nullable=True,
-    )
     zone_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("store_zones.id", ondelete="SET NULL"),

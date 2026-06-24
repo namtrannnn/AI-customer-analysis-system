@@ -130,7 +130,11 @@ class UnifiedPipelineService:
                         track.anonymous_id = profile_id
                     else:
                         track.anonymous_id = f"TRK_{track.track_id:04d}"
-
+                    print(
+                        f"[TRACK_MAP] "
+                        f"track_id={track.track_id} "
+                        f"profile={track_to_profile.get(track.track_id)}"
+                    )
                 print(
                     f"[UnifiedPipeline] Tracking xong: "
                     f"{movement_result.total_persons} người, "

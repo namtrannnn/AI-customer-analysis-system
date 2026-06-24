@@ -38,7 +38,6 @@ migrations = [
         id                BIGSERIAL PRIMARY KEY,
         visit_session_id  BIGINT NOT NULL REFERENCES visit_sessions(id) ON DELETE CASCADE,
         person_profile_id BIGINT NOT NULL REFERENCES person_profiles(id) ON DELETE CASCADE,
-        camera_id         BIGINT REFERENCES cameras(id) ON DELETE SET NULL,
         zone_id           BIGINT REFERENCES store_zones(id) ON DELETE SET NULL,
         position_x        DOUBLE PRECISION,
         position_y        DOUBLE PRECISION,
