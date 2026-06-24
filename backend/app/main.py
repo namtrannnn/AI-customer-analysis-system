@@ -15,6 +15,8 @@ from app.routers import auth_router
 from app.routers import role_router
 from app.routers import permission_router
 from app.routers import video_router 
+from app.routers import camera_session_router
+from app.services.realtime_camera_session_service import realtime_camera_session_service
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -42,6 +44,17 @@ app.include_router(auth_router.router)
 app.include_router(role_router.router)
 app.include_router(permission_router.router)
 app.include_router(video_router.router)
+app.include_router(camera_session_router.router)
+
+
+@app.on_event("startup")
+async def startup_realtime_camera_runtime() -> None:
+    await realtime_camera_session_service.start_background_tasks()
+
+
+@app.on_event("shutdown")
+async def shutdown_realtime_camera_runtime() -> None:
+    await realtime_camera_session_service.stop_background_tasks()
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)

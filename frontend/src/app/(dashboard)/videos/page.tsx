@@ -1,32 +1,35 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { Info, ChevronDown, Upload, Monitor } from "lucide-react";
-import VideoUploader from "@/components/videos/VideoUploader";
-import VideoPreview from "@/components/videos/VideoPreview";
+import { useCallback, useState } from "react";
+import { Camera, ChevronDown, Info, Monitor, Upload } from "lucide-react";
+
+import LiveCameraPanel from "@/components/videos/LiveCameraPanel";
 import VideoAnalysisResultComponent from "@/components/videos/VideoAnalysisResult";
+import VideoPreview from "@/components/videos/VideoPreview";
 import VideoUploadError from "@/components/videos/VideoUploadError";
+import VideoUploader from "@/components/videos/VideoUploader";
 import {
-  validateVideoFile,
   extractVideoMeta,
   uploadAndAnalyzeVideo,
+  validateVideoFile,
 } from "@/services/video.service";
 import type {
   UploadStatus,
-  VideoFileMeta,
   VideoAnalysisResult,
   VideoError,
+  VideoFileMeta,
 } from "@/types/video.type";
 
-// ─── Guide Accordion ──────────────────────────────────────────────────────────
+type VideoMode = "upload" | "live";
+
 function GuideAccordion() {
   const [open, setOpen] = useState(false);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      {/* Toggle header */}
       <button
-        onClick={() => setOpen((v) => !v)}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
         className="flex w-full items-center justify-between px-5 py-4 text-left transition hover:bg-slate-50 dark:hover:bg-slate-700/50"
       >
         <div className="flex items-center gap-2.5">
@@ -35,11 +38,11 @@ function GuideAccordion() {
           </div>
 
           <span className="text-base font-semibold text-slate-700 dark:text-slate-200">
-            Hướng dẫn sử dụng
+            Huong dan su dung
           </span>
 
           <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 sm:inline dark:bg-slate-700 dark:text-slate-200">
-            Cách hoạt động · Yêu cầu · Kết quả
+            Cach hoat dong · Yeu cau · Ket qua
           </span>
         </div>
 
@@ -50,43 +53,41 @@ function GuideAccordion() {
         />
       </button>
 
-      {/* Accordion content */}
       <div
-        className={`transition-all duration-300 ease-in-out ${
+        className={`overflow-hidden transition-all duration-300 ease-in-out ${
           open ? "max-h-[600px] opacity-100" : "max-h-0 opacity-0"
-        } overflow-hidden`}
+        }`}
       >
         <div className="grid gap-5 border-t border-slate-100 px-5 py-5 dark:border-slate-700 sm:grid-cols-3">
-          {/* Cách hoạt động */}
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-200">
-              Cách hoạt động
+              Cach hoat dong
             </p>
 
             <div className="space-y-2.5">
               {[
                 {
                   step: "1",
-                  text: "Upload video từ camera",
+                  text: "Upload video tu camera",
                   desc: "MP4, AVI, MOV, MKV · max 50MB",
                   color: "from-violet-500 to-purple-600",
                 },
                 {
                   step: "2",
-                  text: "AI phân tích từng frame",
-                  desc: "Nhận diện & theo dõi khuôn mặt",
+                  text: "AI phan tich tung frame",
+                  desc: "Nhan dien va theo doi khach hang",
                   color: "from-blue-500 to-indigo-600",
                 },
                 {
                   step: "3",
-                  text: "Phân loại khách hàng",
-                  desc: "Mới / quay lại / VIP",
+                  text: "Thong ke va phan loai",
+                  desc: "Moi / quay lai / ROI event",
                   color: "from-emerald-500 to-teal-600",
                 },
                 {
                   step: "4",
-                  text: "Nhận báo cáo thống kê",
-                  desc: "Confidence, khu vực, thời điểm",
+                  text: "Nhan bao cao ket qua",
+                  desc: "Count, track, khu vuc, thoi diem",
                   color: "from-amber-500 to-orange-500",
                 },
               ].map(({ step, text, desc, color }) => (
@@ -101,7 +102,6 @@ function GuideAccordion() {
                     <p className="text-sm font-semibold text-slate-700 dark:text-slate-100">
                       {text}
                     </p>
-
                     <p className="text-xs text-slate-400 dark:text-slate-300">
                       {desc}
                     </p>
@@ -111,35 +111,37 @@ function GuideAccordion() {
             </div>
           </div>
 
-          {/* Yêu cầu video */}
           <div>
             <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-200">
-              Yêu cầu video
+              Yeu cau video
             </p>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-slate-600 dark:bg-slate-700/70">
               <ul className="space-y-2">
                 {[
                   {
-                    icon: "📁",
-                    label: "Định dạng",
+                    icon: "FILE",
+                    label: "Dinh dang",
                     value: "MP4, AVI, MOV, MKV",
                   },
-                  { icon: "📦", label: "Kích thước", value: "Tối đa 50MB" },
-                  { icon: "⏱", label: "Thời lượng", value: "Tối thiểu 3 giây" },
+                  { icon: "SIZE", label: "Kich thuoc", value: "Toi da 50MB" },
+                  { icon: "TIME", label: "Thoi luong", value: "Toi thieu 3 giay" },
                   {
-                    icon: "🖥",
-                    label: "Phân giải",
-                    value: "Khuyến nghị 720p+",
+                    icon: "RES",
+                    label: "Phan giai",
+                    value: "Khuyen nghi 720p+",
                   },
-                  { icon: "💡", label: "Ánh sáng", value: "Đủ sáng, không mờ" },
+                  { icon: "LIGHT", label: "Anh sang", value: "Du sang, khong mo" },
                 ].map(({ icon, label, value }) => (
                   <li
                     key={label}
-                    className="flex items-center justify-between text-sm"
+                    className="flex items-center justify-between gap-3 text-sm"
                   >
-                    <span className="flex items-center gap-1 text-amber-800 dark:text-slate-300">
-                      <span>{icon}</span> {label}
+                    <span className="flex items-center gap-2 text-amber-800 dark:text-slate-300">
+                      <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900 dark:bg-slate-600 dark:text-slate-100">
+                        {icon}
+                      </span>
+                      {label}
                     </span>
 
                     <span className="font-semibold text-amber-900 dark:text-slate-100">
@@ -151,19 +153,18 @@ function GuideAccordion() {
             </div>
           </div>
 
-          {/* Kết quả + tips */}
           <div className="space-y-3">
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-widest text-slate-600 dark:text-slate-200">
-                Kết quả bạn nhận được
+                Ket qua nhan duoc
               </p>
 
               <div className="rounded-xl bg-gradient-to-br from-violet-600 to-purple-700 p-3 text-white">
                 {[
-                  "Tổng số khách phát hiện",
-                  "Phân loại mới / quay lại",
-                  "Độ chính xác AI",
-                  "Khu vực & thời điểm xuất hiện",
+                  "Tong so khach phat hien",
+                  "Count theo ROI va movement",
+                  "Track dang hoat dong",
+                  "Debug frame khi bat inspection",
                 ].map((item) => (
                   <div
                     key={item}
@@ -176,7 +177,6 @@ function GuideAccordion() {
                     >
                       <path d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z" />
                     </svg>
-
                     {item}
                   </div>
                 ))}
@@ -189,7 +189,6 @@ function GuideAccordion() {
   );
 }
 
-// ─── Loading progress ─────────────────────────────────────────────────────────
 function UploadProgress({
   status,
   progress,
@@ -212,17 +211,17 @@ function UploadProgress({
 
       <div className="text-center">
         <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-          Đang upload & phân tích video...
+          Dang upload va phan tich video...
         </p>
         <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
-          Server đang nhận diện khuôn mặt, vui lòng không đóng trang
+          Server dang xu ly video, vui long khong dong trang.
         </p>
       </div>
 
       {status === "uploading" && (
         <div className="w-full max-w-sm">
           <div className="mb-2 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-            <span>Tiến độ upload</span>
+            <span>Tien do upload</span>
             <span className="font-bold text-violet-600 dark:text-violet-400">
               {progress}%
             </span>
@@ -241,15 +240,15 @@ function UploadProgress({
           1
         </div>
         <span className="text-xs font-medium text-violet-600 dark:text-violet-400">
-          Upload & phân tích AI
+          Upload va phan tich AI
         </span>
       </div>
     </div>
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
 export default function VideosPage() {
+  const [mode, setMode] = useState<VideoMode>("upload");
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [fileMeta, setFileMeta] = useState<VideoFileMeta | null>(null);
   const [rawFile, setRawFile] = useState<File | null>(null);
@@ -283,7 +282,7 @@ export default function VideosPage() {
     } catch {
       setError({
         type: "upload_failed",
-        message: "Không thể đọc thông tin video. Vui lòng thử file khác.",
+        message: "Khong the doc thong tin video. Vui long thu file khac.",
       });
       setStatus("error");
     }
@@ -291,33 +290,37 @@ export default function VideosPage() {
 
   const handleUpload = useCallback(async () => {
     if (!fileMeta || !rawFile) return;
+
     try {
       setStatus("uploading");
       setUploadProgress(0);
+
       const analysisResult = await uploadAndAnalyzeVideo(
         rawFile,
         setUploadProgress,
       );
+
       setResult(analysisResult);
       setStatus("done");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Có lỗi xảy ra";
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Co loi xay ra";
       const type =
-        msg === "FILE_TOO_LARGE"
+        message === "FILE_TOO_LARGE"
           ? "file_too_large"
-          : msg === "INVALID_FORMAT"
+          : message === "INVALID_FORMAT"
             ? "invalid_format"
-            : msg === "NO_PERSON_FOUND"
+            : message === "NO_PERSON_FOUND"
               ? "no_person_found"
               : "analysis_failed";
+
       setError({
         type,
         message:
           type === "file_too_large"
-            ? "File quá lớn. BE chỉ nhận tối đa 50MB."
+            ? "File qua lon. Backend chi nhan toi da 50MB."
             : type === "invalid_format"
-              ? "Định dạng không hợp lệ."
-              : msg,
+              ? "Dinh dang khong hop le."
+              : message,
       });
       setStatus("error");
     }
@@ -333,32 +336,57 @@ export default function VideosPage() {
   }, []);
 
   return (
-    <>
-      {/* ── Page header ── */}
-      <div className="mb-6">
+    <div className="space-y-6">
+      <div>
         <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
           <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 8 8">
             <circle cx="4" cy="4" r="4" />
           </svg>
-          Phân tích AI
+          Phan tich AI
         </div>
         <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-          Upload & Phân tích Video
+          Video Analytics
         </h1>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-          Tải lên video camera để AI nhận diện và phân loại khách hàng tự động.
+          Dung chung mot man hinh cho demo upload video va xu ly realtime tu
+          webcam browser.
         </p>
       </div>
 
-      {/* ── Result view ── */}
-      {status === "done" && result && (
-        <VideoAnalysisResultComponent result={result} onReset={handleReset} />
-      )}
+      <div className="flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => setMode("upload")}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            mode === "upload"
+              ? "bg-violet-600 text-white shadow-lg shadow-violet-500/25"
+              : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+          }`}
+        >
+          <Monitor className="h-4 w-4" />
+          Upload Video
+        </button>
 
-      {/* ── Upload / Processing view ── */}
-      {status !== "done" && (
+        <button
+          type="button"
+          onClick={() => setMode("live")}
+          className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+            mode === "live"
+              ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
+              : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-700/70"
+          }`}
+        >
+          <Camera className="h-4 w-4" />
+          Live Camera
+        </button>
+      </div>
+
+      {mode === "live" ? (
+        <LiveCameraPanel />
+      ) : status === "done" && result ? (
+        <VideoAnalysisResultComponent result={result} onReset={handleReset} />
+      ) : (
         <div className="space-y-4">
-          {/* Upload card */}
           <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800 dark:ring-slate-700/60">
             <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500" />
             <div className="p-6">
@@ -366,20 +394,21 @@ export default function VideosPage() {
                 <UploadProgress status={status} progress={uploadProgress} />
               ) : status === "error" && error ? (
                 <VideoUploadError error={error} onRetry={handleReset} />
-              ) : fileMeta ? (
+              ) : fileMeta && rawFile ? (
                 <div className="mx-auto max-w-2xl">
                   <VideoPreview
                     meta={fileMeta}
-                    file={rawFile!}
+                    file={rawFile}
                     onRemove={handleReset}
                     disabled={isProcessing}
                   />
                   <button
+                    type="button"
                     onClick={handleUpload}
                     className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-violet-500/25 transition hover:from-violet-700 hover:to-purple-700 active:scale-[0.98]"
                   >
                     <Monitor className="h-5 w-5" />
-                    Bắt đầu phân tích AI
+                    Bat dau phan tich AI
                   </button>
                 </div>
               ) : (
@@ -391,10 +420,9 @@ export default function VideosPage() {
             </div>
           </div>
 
-          {/* Guide accordion — bên dưới form */}
           {!isProcessing && <GuideAccordion />}
         </div>
       )}
-    </>
+    </div>
   );
 }

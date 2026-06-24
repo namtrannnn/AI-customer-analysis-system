@@ -168,8 +168,17 @@ class FaceDetectionService:
             _, faces = self.yunet_detector.detect(person_crop)
             if faces is None or len(faces) == 0: continue
 
+            faces = np.asarray(faces)
+
+            faces = faces[np.isfinite(faces).all(axis=1)]
+
+            if len(faces) == 0:
+                continue
+
             best_face = max(faces, key=lambda f: f[-1])
-            fx, fy, fw, fh = [int(v) for v in best_face[:4]]
+
+            fx, fy, fw, fh = map(int, best_face[:4])
+
             conf = float(best_face[-1])
 
             # Chặn ảnh rác ở vùng ngực/bụng
