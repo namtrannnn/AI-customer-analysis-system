@@ -32,7 +32,9 @@ class TrackingService:
                 persist=True,
                 verbose=False,
             )
-        except Exception:
+        except Exception as e:
+            print(f"[TRACKER ERROR] {e}")
+
             # Fallback về bytetrack nếu botrack không có
             results = self.model.track(
                 frame,

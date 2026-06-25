@@ -7,4 +7,4 @@ __pycache__/
 app/services/ai/models/*.onnx
 app/services/ai/models/*.pt
 
-pipeline_faces
+pipeline_faces/

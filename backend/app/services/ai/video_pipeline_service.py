@@ -96,7 +96,7 @@ class VideoProcessingPipelineService:
             self,
             video_path: str,
             output_face_dir: str = "./pipeline_faces",
-            target_fps: float = 1.0,
+            target_fps: float = 10.0,
             debug_video_path: str = None,
         ) -> Dict:
 
@@ -710,21 +710,28 @@ class VideoProcessingPipelineService:
 
                         for record in debug_person_records:
                             f_idx = record["frame_index"]
+                            records_by_frame.setdefault(f_idx, []).append(record)
 
-                            if f_idx not in records_by_frame:
-                                records_by_frame[f_idx] = []
+                        total_unique_people = len(
+                            set(pid for pid in track_to_profile.values() if pid != "PENDING")
+                        )
 
-                            records_by_frame[f_idx].append(record)
-
-                        # Tính tổng số khách hàng duy nhất đã được gộp ID
-                        # (Dùng set để loại bỏ các track_id bị trùng profile_id)
-                        total_unique_people = len(set(pid for pid in track_to_profile.values() if pid != "PENDING"))
+                        route_history = {}
 
                         for frame_data in frame_result.frames:
                             img = cv2.imread(frame_data.image_path)
 
                             if img is None:
                                 continue
+
+                            # =========================
+                            # SHOW DEBUG FRAME (optional)
+                            # =========================
+                            cv2.imshow("Tracking Debug", img)
+                            key = cv2.waitKey(1)   # ⚠️ không dùng 0 nếu muốn chạy video
+
+                            if key == 27:
+                                break
 
                             frame_records = records_by_frame.get(frame_data.frame_index, [])
 
@@ -733,52 +740,91 @@ class VideoProcessingPipelineService:
                                 track_id = record["track_id"]
                                 profile_id = track_to_profile.get(track_id, "PENDING")
 
-                                # Màu khung viền (Xanh lá nếu có ID thật, Đỏ nếu là rác bị loại)
+                                # =========================
+                                # DRAW BOX
+                                # =========================
                                 box_color = (0, 255, 0) if profile_id != "PENDING" else (0, 0, 255)
-                                
-                                # Đổi màu chữ thành Vàng (B=0, G=255, R=255)
-                                text_color = (0, 255, 255) if profile_id != "PENDING" else (0, 0, 255)
 
-                                cv2.rectangle(img, (x1, y1), (x2, y2), box_color, 2)
+                                cv2.rectangle(
+                                    img,
+                                    (x1, y1),
+                                    (x2, y2),
+                                    box_color,
+                                    2
+                                )
 
+                                # =========================
+                                # FACE OVERLAY (SAFE)
+                                # =========================
+                                face = track_best_face.get(track_id)
+
+                                if face and face.face_image_path:
+                                    face_img = cv2.imread(face.face_image_path)
+
+                                    if face_img is not None:
+                                        face_img = cv2.resize(face_img, (60, 60))
+
+                                        fy1 = max(0, y1 - 70)
+                                        fy2 = fy1 + 60
+                                        fx1 = max(0, x1)
+                                        fx2 = fx1 + 60
+
+                                        if fy2 < img.shape[0] and fx2 < img.shape[1]:
+                                            img[fy1:fy2, fx1:fx2] = face_img
+
+                                # =========================
+                                # ROUTE TRACKING
+                                # =========================
+                                cx = int((x1 + x2) / 2)
+                                cy = int((y1 + y2) / 2)
+
+                                route_history.setdefault(track_id, []).append((cx, cy))
+                                route_history[track_id] = route_history[track_id][-200:]
+
+                                # =========================
+                                # LABEL
+                                # =========================
                                 label = f"Trk:{track_id} -> {profile_id}"
-
                                 cv2.putText(
                                     img,
                                     label,
-                                    (x1, max(0, y1 - 10)),
+                                    (x1, max(20, y1 - 10)),
                                     cv2.FONT_HERSHEY_SIMPLEX,
                                     0.6,
-                                    text_color, # Dùng biến text_color ở đây
-                                    2,
+                                    (0, 255, 255),
+                                    2
                                 )
+                            for track_id, pts in route_history.items():
+                                if len(pts) < 2:
+                                    continue
 
-                            # HIỂN THỊ TỔNG SỐ NGƯỜI Ở GÓC TRÊN CÙNG BÊN TRÁI
+                                for i in range(1, len(pts)):
+                                    cv2.line(img, pts[i - 1], pts[i], (255, 0, 0), 2)
+                            # =========================
+                            # COUNTER UI
+                            # =========================
                             counter_label = f"Total person: {total_unique_people}"
-                            counter_color = (0, 255, 0)
-                            
-                            # Đổ bóng (Shadow) cho chữ dễ đọc trên nền sáng
-                            cv2.putText(img, counter_label, (32, 52), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
-                            # Chữ chính
-                            cv2.putText(img, counter_label, (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, counter_color, 3)
 
+                            cv2.putText(img, counter_label, (32, 52),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
+
+                            cv2.putText(img, counter_label, (30, 50),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 0), 3)
+
+                            # =========================
+                            # WRITE VIDEO
+                            # =========================
                             out_video.write(img)
 
                         out_video.release()
 
+                cv2.destroyAllWindows()
                 print("XỬ LÝ ONLINE PIPELINE HOÀN TẤT!")
 
                 return {
-                    "raw_track_count": len(track_observation_counts),
-                    "assigned_tracks": len(track_to_profile),
-                    "faces_detected": len(debug_face_records),
-                    "valid_tracklets": len(track_to_profile),
                     "merged_profiles": merged_profiles,
-                    "track_to_profile": track_to_profile,
-                    # Dùng để tính đường đi — không cần chạy ByteTrack lần 2
                     "debug_person_records": debug_person_records,
                     "video_fps": frame_result.video_fps,
-                    "video_duration": frame_result.duration_seconds,
                 }
 
         def _safe_handoff_merge_profiles(self, profiles: List[Dict]) -> List[Dict]:

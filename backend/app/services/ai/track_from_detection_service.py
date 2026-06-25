@@ -112,7 +112,28 @@ def process_detections_for_tracking(
                 track_zones[track_id] = set()
                 track_entry[track_id] = ts
 
+            # append điểm gốc
             track_points[track_id].append(point)
+
+            prev_points = track_points[track_id]
+
+            if len(prev_points) >= 2:
+                p1 = prev_points[-2]
+                p2 = prev_points[-1]
+
+                steps = 3  # tăng số điểm giả giữa 2 frame
+
+                for i in range(1, steps):
+                    interp_point = TrackPoint(
+                        track_id=track_id,
+                        x=round(p1.x + (p2.x - p1.x) * i / steps, 4),
+                        y=round(p1.y + (p2.y - p1.y) * i / steps, 4),
+                        zone_id=p2.zone_id,
+                        tracked_at=ts,
+                        frame_index=frame_index,
+                    )
+                    track_points[track_id].append(interp_point)
+
             track_exit[track_id] = ts
 
             if zone_id is not None:
@@ -141,7 +162,7 @@ def process_detections_for_tracking(
         entry = track_entry.get(track_id)
         exit_ = track_exit.get(track_id)
         duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
-
+      
         result.tracks.append(TrackResult(
             track_id=track_id,
             points=points,
@@ -150,7 +171,6 @@ def process_detections_for_tracking(
             exit_time=exit_,
             duration_seconds=duration,
         ))
-
     # Zone visits
     for v in zone_enter_exit.get_zone_visit_summary():
         result.zone_visits.append(ZoneVisitData(

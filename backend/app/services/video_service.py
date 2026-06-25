@@ -117,7 +117,7 @@ async def process_temporary_video(
     file: UploadFile,
     db: Session | None = None,
 ) -> VideoAnalysisResponse:
-
+    
     if not file.content_type or not file.content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="Sai định dạng. Phải là file video.")
 
@@ -136,14 +136,21 @@ async def process_temporary_video(
         # ── 1. Video pipeline: nhận diện khuôn mặt ───────────────────────────
         pipeline_result: dict = video_pipeline_service.process_video(
             temp_video.name,
-            target_fps=1.0,
+            target_fps=10.0,
         )
 
         merged_profiles: list = pipeline_result.get("merged_profiles", [])
         debug_person_records: list = pipeline_result.get("debug_person_records", [])
         video_fps: float = pipeline_result.get("video_fps", 1.0)
         total_customers = len(merged_profiles)
+        print(f"video_fps={video_fps}")
 
+        if debug_person_records:
+            frames = [r["frame_index"] for r in debug_person_records]
+
+            print(f"min_frame={min(frames)}")
+            print(f"max_frame={max(frames)}")
+            print(f"total_records={len(frames)}")
         # Map track_id → P_000X dùng merged_track_ids (cùng ByteTrack session)
         track_to_profile = _build_track_to_profile(merged_profiles)
         profile_confidence = {
