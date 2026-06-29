@@ -1,10 +1,10 @@
 import os
 import time
 import shutil
-from app.services.ai.video_pipeline_service import video_pipeline_service
+from app.services.ai.camera_pipeline_service import camera_pipeline_service
 
 def run_full_pipeline_test():
-    video_path = "test_video3.mp4"
+    video_path = "test_video6.mp4"
     if not os.path.exists(video_path):
         print(f"❌ Không tìm thấy video: {video_path}")
         return
@@ -12,7 +12,7 @@ def run_full_pipeline_test():
     start_time = time.time()
     
     # 🚀 Chạy Pipeline và Yêu cầu xuất Video Debug
-    pipeline_result = video_pipeline_service.process_video(
+    pipeline_result = camera_pipeline_service.process_video(
         video_path=video_path,
         output_face_dir="./pipeline_faces",
         target_fps=15.0, # Tốc độ quét FPS (chỉnh tùy cấu hình máy)

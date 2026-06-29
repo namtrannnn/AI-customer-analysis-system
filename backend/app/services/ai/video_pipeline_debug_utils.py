@@ -198,16 +198,34 @@ class VideoPipelineDebugMixin:
         """
         Chỉ điều khiển phần HIỂN THỊ/DEBUG cho true delayed realtime.
 
-        Identity core vẫn xử lý event-based. Camera/debug chỉ publish P_id sau khi
-        track đã có đủ tuổi/obs, để người xem thấy rõ quá trình:
-        TRACK_ONLY/TEMP -> COMMIT P_id.
+        Bản camera-realtime ưu tiên snapshot đã được lưu ngay tại frame đang xử lý, vì camera
+        thật không thể dùng track_to_profile cuối video để vẽ ngược lại quá khứ.
+        Nếu record không có snapshot mới thì fallback về logic cũ.
         """
         track_id = int(record.get("track_id"))
         frame_index = int(record.get("frame_index", 0) or 0)
         obs = int(record.get("observation_count", 0) or 0)
 
+        snap_stage = record.get("display_stage")
+        snap_profile = record.get("display_profile_id")
+        snap_text = record.get("display_text")
+        if snap_stage:
+            if snap_stage == "CONFIRMED" and snap_profile and snap_profile != "PENDING":
+                return str(snap_profile), snap_text or f"CONFIRMED {snap_profile}"
+            if snap_stage == "RECHECK" and snap_profile and snap_profile != "PENDING":
+                return str(snap_profile), snap_text or f"RECHECK {snap_profile}"
+            if snap_stage == "TENTATIVE" and snap_profile and snap_profile != "PENDING":
+                return f"CAND:{snap_profile}", snap_text or f"TENTATIVE {snap_profile}"
+            if snap_stage == "PENDING":
+                return "PENDING", snap_text or "PENDING: collecting evidence"
+            if snap_stage == "RECHECK":
+                return "RECHECK", snap_text or "RECHECK: wait for stable identity"
+            return f"TEMP_{track_id}", snap_text or "TEMP: track only"
+
         if not final_profile_id or final_profile_id == "PENDING":
-            return f"TEMP_{track_id}", "TRACK_ONLY / PENDING"
+            if obs <= 2:
+                return f"TEMP_{track_id}", "TEMP: track appeared"
+            return "PENDING", "PENDING: collecting identity evidence"
 
         boxes = track_frame_bboxes.get(track_id) or {}
         first_frame = min((int(f) for f in boxes.keys()), default=frame_index)
@@ -215,12 +233,151 @@ class VideoPipelineDebugMixin:
 
         if obs < int(delayed_display_min_obs) or age_frames < int(delayed_display_min_frames):
             return (
-                f"TEMP_{track_id}",
-                f"COLLECTING -> candidate {final_profile_id} "
-                f"({obs}/{delayed_display_min_obs} obs, {age_frames}/{delayed_display_min_frames}f)",
+                f"CAND:{final_profile_id}",
+                f"TENTATIVE {final_profile_id}: "
+                f"{obs}/{delayed_display_min_obs} obs, {age_frames}/{delayed_display_min_frames}f",
             )
 
-        return final_profile_id, f"COMMITTED {final_profile_id}"
+        return final_profile_id, f"CONFIRMED {final_profile_id}"
+
+    def _camera_stage_from_status(
+        self,
+        *,
+        track_id: int,
+        profile_id: Optional[str],
+        status: str,
+        obs_count: int,
+        age_frames: int,
+        delayed_display_min_frames: int,
+        delayed_display_min_obs: int,
+    ) -> tuple[str, Optional[str], str]:
+        """Map internal identity status to camera-facing delayed realtime stage."""
+        status_text = str(status or "")
+        upper = status_text.upper()
+        has_profile = bool(profile_id)
+
+        if not has_profile:
+            if int(obs_count) <= 2:
+                return "TEMP", None, f"TEMP: Track {track_id} appeared"
+            if (
+                "CANDIDATE" in upper
+                or "AMBIG" in upper
+                or "NEAR_EXISTING=TRUE" in upper
+                or "NOT CONFIRMED" in upper
+            ):
+                return "TENTATIVE", None, status_text[:90] or "TENTATIVE: candidate not stable"
+            return "PENDING", None, status_text[:90] or "PENDING: collecting evidence"
+
+        if (
+            "RELINK" in upper
+            or "CORRECTED" in upper
+            or "LINEAGE" in upper
+            or "SPLIT" in upper
+            or "RECHECK" in upper
+        ):
+            return "RECHECK", str(profile_id), status_text[:90] or f"RECHECK {profile_id}"
+
+        if int(obs_count) < int(delayed_display_min_obs) or int(age_frames) < int(delayed_display_min_frames):
+            return (
+                "TENTATIVE",
+                str(profile_id),
+                f"TENTATIVE {profile_id}: {obs_count}/{delayed_display_min_obs} obs, "
+                f"{age_frames}/{delayed_display_min_frames}f",
+            )
+
+        return "CONFIRMED", str(profile_id), f"CONFIRMED {profile_id}"
+
+    def _snapshot_camera_debug_records(
+        self,
+        *,
+        frame_index: int,
+        tracked_persons,
+        track_to_profile: Dict[int, str],
+        track_observation_counts: Dict[int, int],
+        track_frame_bboxes: Dict[int, Dict[int, List[float]]],
+        track_debug_status: Dict[int, str],
+        delayed_display_min_frames: int,
+        delayed_display_min_obs: int,
+        duplicate_iou_threshold: float = 0.45,
+    ) -> List[Dict]:
+        """
+        Tạo snapshot đúng tại frame hiện tại cho debug video/camera UI.
+        Không dùng mapping cuối video. Đồng thời đảm bảo một P_id chỉ được publish
+        trên một track trong cùng frame; track còn lại sẽ bị đẩy về RECHECK/TENTATIVE.
+        """
+        records = []
+        for tp in tracked_persons or []:
+            tid = int(tp.get("track_id"))
+            bbox = tp.get("bbox")
+            obs = int(track_observation_counts.get(tid, 0) or 0)
+            boxes = track_frame_bboxes.get(tid) or {}
+            first_frame = min((int(f) for f in boxes.keys()), default=int(frame_index))
+            age_frames = max(0, int(frame_index) - int(first_frame) + 1)
+            profile_id = track_to_profile.get(tid)
+            status = track_debug_status.get(tid, "")
+            stage, display_pid, display_text = self._camera_stage_from_status(
+                track_id=tid,
+                profile_id=profile_id,
+                status=status,
+                obs_count=obs,
+                age_frames=age_frames,
+                delayed_display_min_frames=delayed_display_min_frames,
+                delayed_display_min_obs=delayed_display_min_obs,
+            )
+            records.append({
+                "frame_index": int(frame_index),
+                "track_id": tid,
+                "bbox": bbox,
+                "observation_count": obs,
+                "profile_id_snapshot": profile_id,
+                "debug_status_snapshot": status,
+                "display_stage": stage,
+                "display_profile_id": display_pid,
+                "display_text": display_text,
+            })
+
+        # Same-frame invariant at DISPLAY level.
+        # v7: logic chính đã hard-split mapping nội bộ trước khi snapshot.
+        # Nếu vẫn lọt conflict tới đây thì chỉ là fallback hiển thị, không dùng để che lỗi identity.
+        by_pid = {}
+        for idx, rec in enumerate(records):
+            pid = rec.get("display_profile_id")
+            if not pid or rec.get("display_stage") not in ("CONFIRMED", "RECHECK"):
+                continue
+            by_pid.setdefault(str(pid), []).append(idx)
+
+        for pid, idxs in by_pid.items():
+            if len(idxs) <= 1:
+                continue
+            # Nếu bbox gần như duplicate thì giữ track có stage mạnh/obs cao; nếu khác người,
+            # chỉ publish một track và đưa track còn lại về RECHECK để không vi phạm invariant.
+            idxs.sort(
+                key=lambda i: (
+                    1 if records[i].get("display_stage") == "CONFIRMED" else 0,
+                    int(records[i].get("observation_count", 0) or 0),
+                    -int(records[i].get("track_id", 0) or 0),
+                ),
+                reverse=True,
+            )
+            keep_idx = idxs[0]
+            keep_box = records[keep_idx].get("bbox")
+            for idx in idxs[1:]:
+                iou = self._bbox_iou(keep_box, records[idx].get("bbox"))
+                if iou < duplicate_iou_threshold:
+                    # Fallback hiển thị: không giả vờ track phụ vẫn là P_id đó.
+                    # Nội bộ phải đã hard-split/unassign ở service. Nếu còn tới đây, hiển thị rõ lỗi conflict.
+                    records[idx]["display_stage"] = "RECHECK"
+                    records[idx]["display_profile_id"] = None
+                    records[idx]["display_text"] = (
+                        f"RECHECK: SAME-FRAME PID CONFLICT {pid}, internal split required"
+                    )
+                else:
+                    records[idx]["display_stage"] = "TENTATIVE"
+                    records[idx]["display_profile_id"] = None
+                    records[idx]["display_text"] = (
+                        f"TENTATIVE: duplicate bbox of {pid}, waiting tracker collapse"
+                    )
+        return records
 
     def _collapse_duplicate_debug_records(
         self,
@@ -246,7 +403,11 @@ class VideoPipelineDebugMixin:
         removed = set()
 
         def profile_of(record):
-            return track_to_profile.get(record.get("track_id"), "PENDING")
+            return (
+                record.get("display_profile_id")
+                or record.get("profile_id_snapshot")
+                or track_to_profile.get(record.get("track_id"), "PENDING")
+            )
 
         ordered = sorted(
             enumerate(frame_records),
