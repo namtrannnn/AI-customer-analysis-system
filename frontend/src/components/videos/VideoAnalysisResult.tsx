@@ -1,67 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import {
-  Upload,
-  Users,
-  UserPlus,
-  RefreshCw,
-  ShieldCheck,
-  Search,
-} from "lucide-react";
+import { Upload, ShieldCheck, Search } from "lucide-react";
 import type { VideoAnalysisResult, DetectedPerson } from "@/types/video.type";
 import { formatDurationVideo } from "@/services/video.service";
 import Button from "@/components/ui/Button";
 import Input from "@/components/ui/Input";
 import Select from "@/components/ui/Select";
+import StatCard from "@/components/common/StatCard";
+import CustomerSummaryStats from "@/components/common/CustomerSummaryStats";
 import type { SelectOption } from "@/components/ui/Select";
 
 interface VideoAnalysisResultProps {
   result: VideoAnalysisResult;
   onReset: () => void;
-}
-
-// ─── Stat card ────────────────────────────────────────────────────────────────
-function StatCard({
-  label,
-  value,
-  sub,
-  gradient,
-  icon,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  gradient: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800 dark:ring-slate-700/60">
-      <div
-        className={`absolute -right-3 -top-3 h-16 w-16 rounded-full opacity-10 ${gradient}`}
-      />
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-500 dark:text-slate-200">
-            {label}
-          </p>
-          <p className="mt-1.5 text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
-            {value}
-          </p>
-          {sub && (
-            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-200">
-              {sub}
-            </p>
-          )}
-        </div>
-        <div
-          className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} shadow-sm`}
-        >
-          {icon}
-        </div>
-      </div>
-    </div>
-  );
 }
 
 // ─── Confidence bar ───────────────────────────────────────────────────────────
@@ -227,35 +179,22 @@ export default function VideoAnalysisResultComponent({
       </div>
 
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatCard
-          label="Tổng khách phát hiện"
-          value={stats.total_customers}
-          gradient="from-violet-500 to-purple-600"
-          icon={<Users className="h-5 w-5 text-white" />}
-        />
-        <StatCard
-          label="Khách mới"
-          value={stats.new_customers}
-          sub={`${Math.round((stats.new_customers / stats.total_customers) * 100)}% tổng số`}
-          gradient="from-emerald-500 to-teal-500"
-          icon={<UserPlus className="h-5 w-5 text-white" />}
-        />
-        <StatCard
-          label="Khách quay lại"
-          value={stats.returning_customers}
-          sub={`${Math.round((stats.returning_customers / stats.total_customers) * 100)}% tổng số`}
-          gradient="from-blue-500 to-indigo-500"
-          icon={<RefreshCw className="h-5 w-5 text-white" />}
-        />
-        <StatCard
-          label="Độ chính xác TB"
-          value={`${Math.round(stats.avg_confidence * 100)}%`}
-          sub="AI confidence score"
-          gradient="from-amber-500 to-orange-500"
-          icon={<ShieldCheck className="h-5 w-5 text-white" />}
-        />
-      </div>
+      <CustomerSummaryStats
+        stats={{
+          total_customers: stats.total_customers,
+          new_customers: stats.new_customers,
+          returning_customers: stats.returning_customers,
+        }}
+        extraCard={
+          <StatCard
+            label="Độ chính xác TB"
+            value={`${Math.round(stats.avg_confidence * 100)}%`}
+            sub="AI confidence score"
+            gradient="from-amber-500 to-orange-500"
+            icon={<ShieldCheck className="h-5 w-5 text-white" />}
+          />
+        }
+      />
 
       {/* ── Detected persons table ── */}
       <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800 dark:ring-slate-700/60">

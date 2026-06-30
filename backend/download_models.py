@@ -4,7 +4,7 @@ import urllib.request
 # Danh sách các mô hình cần tải: { Tên file : Link tải chuẩn }
 MODELS_TO_DOWNLOAD = {
     # 1. AI-04: Trích xuất khuôn mặt (ArcFace) ~ 130MB
-    "arcface.onnx": "https://github.com/onnx/models/raw/main/validated/vision/body_analysis/arcface/model/arcfaceresnet100-8.onnx",
+    "face_recognition_sface_2021dec.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
     
     # 2. AI-03: Cắt khuôn mặt (YuNet 2023) ~ 1.5MB
     "face_detection_yunet_2023mar.onnx": "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
