@@ -75,10 +75,11 @@ export default function ZoneList({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="flex shrink-0 items-center gap-1">
               <Button
                 variant="ghost"
                 size="sm"
+                className="text-slate-450 hover:bg-slate-100 dark:hover:bg-slate-800 dark:text-slate-400"
                 onClick={(e) => { e.stopPropagation(); onEdit(zone); }}
                 title="Chỉnh sửa"
               >

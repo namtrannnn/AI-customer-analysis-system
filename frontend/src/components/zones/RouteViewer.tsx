@@ -33,7 +33,7 @@ export default function RouteViewer({
   const imgRef = useRef<HTMLImageElement | null>(null);
   const animFrameRef = useRef<number>(0);
   const [hoveredTrackId, setHoveredTrackId] = useState<number | null>(null);
-  const [popupTrack, setPopupTrack] = useState<MovementTrack | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [animProgress, setAnimProgress] = useState(1); // 0..1
   const isAnimating = useRef(false);
 
@@ -99,7 +99,7 @@ export default function RouteViewer({
         const isSelected = track.id === selectedTrackId;
         const isHovered = track.id === hoveredTrackId;
         const isActive = isSelected || isHovered;
-        const alpha = selectedTrackId !== null && !isActive ? 0.2 : 1;
+        const alpha = selectedTrackId !== null && !isActive ? 0.15 : 1;
         const lineWidth = isActive ? 3 : 2;
 
         const totalPoints = track.points.length;
@@ -240,6 +240,11 @@ export default function RouteViewer({
     const t = findTrackAt(cx, cy, canvas.width, canvas.height);
     setHoveredTrackId(t?.id ?? null);
     canvas.style.cursor = t ? "pointer" : "default";
+    if (t) {
+      setMousePos({ x: cx, y: cy });
+    } else {
+      setMousePos(null);
+    }
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -250,10 +255,8 @@ export default function RouteViewer({
     const t = findTrackAt(cx, cy, canvas.width, canvas.height);
 
     if (t) {
-      setPopupTrack(t);
       onSelectTrack?.(t);
     } else {
-      setPopupTrack(null);
       onSelectTrack?.(null);
     }
   };
@@ -284,38 +287,29 @@ export default function RouteViewer({
         {tracks.length} khách · {zones.length} vùng
       </div>
 
-      {/* Track detail popup */}
-      {popupTrack && (
-        <TrackDetailPopup
-          track={popupTrack}
-          zones={zones}
-          onClose={() => { setPopupTrack(null); onSelectTrack?.(null); }}
-        />
+      {/* Hover Tooltip */}
+      {hoveredTrackId !== null && mousePos && (
+        <div
+          className="absolute z-20 pointer-events-none rounded-lg bg-slate-900/90 px-2.5 py-1 text-[11px] font-mono font-bold text-white shadow-lg border border-slate-700/50 backdrop-blur-xs transform -translate-x-1/2 -translate-y-full -mt-3.5 transition-all duration-75"
+          style={{ left: mousePos.x, top: mousePos.y }}
+        >
+          {tracks.find((t) => t.id === hoveredTrackId)?.anonymous_id}
+        </div>
       )}
 
-      {/* Legend */}
-      {tracks.length > 0 && (
-        <div className="absolute left-3 top-3 flex flex-col gap-1 rounded-xl bg-black/60 p-2 backdrop-blur-sm">
-          {tracks.slice(0, 6).map((t) => (
-            <button
-              key={t.id}
-              onClick={() => {
-                const same = t.id === selectedTrackId;
-                onSelectTrack?.(same ? null : t);
-                setPopupTrack(same ? null : t);
-              }}
-              className={`flex items-center gap-1.5 rounded-lg px-2 py-0.5 text-xs transition ${
-                t.id === selectedTrackId ? "bg-white/20" : "hover:bg-white/10"
-              }`}
-            >
-              <div className="h-2 w-2 rounded-full" style={{ backgroundColor: t.color }} />
-              <span className="font-mono text-white">{t.anonymous_id}</span>
-            </button>
-          ))}
-          {tracks.length > 6 && (
-            <p className="px-2 text-[10px] text-white/50">+{tracks.length - 6} khác</p>
-          )}
-        </div>
+      {/* Track detail popup floating on canvas */}
+      {selectedTrackId !== undefined && selectedTrackId !== null && (
+        (() => {
+          const t = tracks.find((track) => track.id === selectedTrackId);
+          if (!t) return null;
+          return (
+            <TrackDetailPopup
+              track={t}
+              zones={zones}
+              onClose={() => onSelectTrack?.(null)}
+            />
+          );
+        })()
       )}
 
       {/* Empty state */}

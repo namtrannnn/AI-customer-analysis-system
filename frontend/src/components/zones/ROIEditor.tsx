@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Plus, RotateCcw, Check, X, ImagePlus, Pencil, FlaskConical } from "lucide-react";
 import type { StoreZone, ZoneCreatePayload, Point } from "@/types/zone.type";
 import { ZONE_TYPE_LABELS, ZONE_COLORS } from "@/types/zone.type";
@@ -32,17 +32,32 @@ interface TooltipState {
   loading: boolean;
 }
 
-export default function ROIEditor({
+export interface ROIEditorRef {
+  startEdit: (zone: StoreZone) => void;
+}
+
+const ROIEditor = forwardRef<ROIEditorRef, ROIEditorProps>(function ROIEditor({
   zones,
   backgroundUrl = DEFAULT_BG,
   onBgChange,
   onZoneCreate,
   onZoneEdit,
   onZoneDelete,
-}: ROIEditorProps) {
+}, ref) {
   const drawingRef = useRef<PolygonDrawingRef>(null);
   const bgInputRef = useRef<HTMLInputElement>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+
+  useImperativeHandle(ref, () => ({
+    startEdit: (zone: StoreZone) => {
+      setEditingZone(zone);
+      setCurrentColor(zone.color);
+      setCurrentPoints(zone.polygon);
+      setTooltip(null);
+      drawingRef.current?.setPolygon(zone.polygon);
+      setMode("editing-polygon");
+    }
+  }));
 
   const [mode, setMode] = useState<EditorMode>("idle");
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
@@ -288,23 +303,7 @@ export default function ROIEditor({
           enabled={isDrawingOrEditing}
         />
 
-        {/* Zone overlay (idle) */}
-        {mode === "idle" && zones.length > 0 && (
-          <div className="absolute right-3 top-3 flex flex-col gap-1 max-h-[80%] overflow-y-auto">
-            {zones.map((z) => (
-              <div key={z.id} className="flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
-                <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: z.color }} />
-                <span className="max-w-[120px] truncate">{z.zone_name}</span>
-                <button onClick={() => handleEditClick(z)} className="ml-1 rounded p-0.5 text-white/60 hover:bg-white/20 hover:text-white" title="Sửa vùng">
-                  <Pencil className="h-3 w-3" />
-                </button>
-                <button onClick={() => onZoneDelete(z)} className="rounded p-0.5 text-red-300 hover:bg-red-500/20 hover:text-red-200" title="Xóa vùng">
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+
 
         {/* Edit hint */}
         {mode === "editing-polygon" && (
@@ -419,4 +418,6 @@ export default function ROIEditor({
       </Modal>
     </div>
   );
-}
+});
+
+export default ROIEditor;

@@ -73,6 +73,9 @@ export interface MovementTrack {
   exit_time: string | null;
   duration_seconds: number | null;
   zones_visited: number[];
+  customer_id?: number | null;
+  customer_name?: string | null;
+  customer_avatar?: string | null;
 }
 
 // ─── Zone Visit ───────────────────────────────────────────────────────────────
@@ -92,6 +95,9 @@ export interface TrackFilterParams {
   person_id?: string;
   zone_id?: number | "";
   date?: string;
+  start_time?: string;
+  end_time?: string;
+  duration?: "all" | "short" | "medium" | "long";
 }
 
 export const ZONE_COLORS = [

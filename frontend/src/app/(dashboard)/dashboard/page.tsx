@@ -63,7 +63,7 @@ export default function DashboardPage() {
 
   // Compute stats từ dữ liệu thật
   const activeCount = customers.filter((c) => c.status === "active").length;
-  const vipCount = customers.filter((c) => c.status === "vip").length;
+  const vipCount = customers.filter((c) => c.note?.includes("VIP")).length;
   const returningCount = customers.filter((c) => (c.total_visits ?? 0) > 1).length;
   const newCount = customers.filter((c) => (c.total_visits ?? 0) <= 1).length;
   const totalRevenue = customers.reduce((s, c) => s + (Number(c.total_spent) || 0), 0);
@@ -168,7 +168,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {c.status === "vip" && (
+                    {c.note?.includes("VIP") && (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                         VIP
                       </span>
