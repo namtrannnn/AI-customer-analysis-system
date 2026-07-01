@@ -66,8 +66,11 @@ export default function ZonesPage() {
     try {
       const data = await getZones();
       setZones(data);
-    } catch {
-      showToast("error", "Không tải được danh sách vùng");
+    } catch (e: unknown) {
+      showToast(
+        "error",
+        e instanceof Error ? e.message : "Không tải được danh sách vùng",
+      );
     } finally {
       setZonesLoading(false);
     }

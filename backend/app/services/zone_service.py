@@ -99,13 +99,17 @@ def get_movement_tracks(
             func.max(MovementTrack.tracked_at).label("exit_time"),
             func.count(MovementTrack.id).label("point_count"),
         )
-        .group_by(MovementTrack.person_profile_id)
-        .order_by(func.min(MovementTrack.tracked_at).desc())
-        .limit(limit)
     )
 
-    if zone_id:
+    if zone_id is not None:
         person_query = person_query.filter(MovementTrack.zone_id == zone_id)
+
+    person_query = (
+    person_query
+    .group_by(MovementTrack.person_profile_id)
+    .order_by(func.min(MovementTrack.tracked_at).desc())
+    .limit(limit)
+    )
 
     persons = person_query.all()
 
@@ -126,9 +130,23 @@ def get_movement_tracks(
 
         # Lấy TẤT CẢ points của người này (tất cả track_id)
         # Sort theo tracked_at để đường đi theo thứ tự thời gian
-        points_raw = (
+        #points_raw = (
+        #    db.query(MovementTrack)
+        #    .filter(MovementTrack.person_profile_id == person_row.person_profile_id)
+        #    .order_by(MovementTrack.tracked_at)
+        #    .all()
+        #)
+
+        points_query = (
             db.query(MovementTrack)
             .filter(MovementTrack.person_profile_id == person_row.person_profile_id)
+        )
+
+        if zone_id is not None:
+            points_query = points_query.filter(MovementTrack.zone_id == zone_id)
+
+        points_raw = (
+            points_query
             .order_by(MovementTrack.tracked_at)
             .all()
         )
