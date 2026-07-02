@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Upload, ShieldCheck, Search } from "lucide-react";
+import Link from "next/link";
+import { Upload, ShieldCheck, Search, User } from "lucide-react";
 import type { VideoAnalysisResult, DetectedPerson } from "@/types/video.type";
 import { formatDurationVideo } from "@/services/video.service";
 import Button from "@/components/ui/Button";
@@ -59,19 +60,37 @@ function PersonRow({
 
       <td className="px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-slate-200 dark:bg-slate-700">
-            {person.thumbnail_url && (
+          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800 border dark:border-slate-700 flex items-center justify-center">
+            {person.thumbnail_url && !person.thumbnail_url.includes("dicebear.com") ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={person.thumbnail_url}
                 alt={person.anonymous_id}
                 className="h-full w-full object-cover"
               />
+            ) : (
+              <User className="h-4.5 w-4.5 text-slate-400 dark:text-slate-500" />
             )}
           </div>
-          <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
-            {person.anonymous_id}
-          </span>
+          <div className="flex flex-col min-w-0">
+            {person.customer_id ? (
+              <Link
+                href={`/customers/${person.customer_id}`}
+                className="text-xs font-bold text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 hover:underline truncate"
+              >
+                {person.customer_name || person.anonymous_id}
+              </Link>
+            ) : (
+              <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                {person.anonymous_id}
+              </span>
+            )}
+            {person.customer_id && (
+              <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                {person.anonymous_id}
+              </span>
+            )}
+          </div>
         </div>
       </td>
 

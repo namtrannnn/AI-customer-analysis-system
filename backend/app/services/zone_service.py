@@ -167,6 +167,20 @@ def get_movement_tracks(
         exit_ = person_row.exit_time
         duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
 
+        # Check if there is a registered customer associated with this profile
+        from app.models.customer import Customer
+        from app.models.customer_identity import CustomerIdentity
+        cust_profile = (
+            db.query(Customer)
+            .join(CustomerIdentity, CustomerIdentity.customer_id == Customer.id)
+            .filter(CustomerIdentity.person_profile_id == profile.id)
+            .first()
+        )
+
+        customer_id = cust_profile.id if cust_profile else None
+        customer_name = cust_profile.full_name if cust_profile else None
+        customer_avatar = (cust_profile.avatar_url if cust_profile else None) or profile.face_image_url
+
         result.append({
             "id": person_row.person_profile_id,  # dùng profile_id làm id
             "person_profile_id": person_row.person_profile_id,
@@ -178,6 +192,10 @@ def get_movement_tracks(
             "duration_seconds": duration,
             "zones_visited": zones_visited,
             "points": points,
+            "face_image_url": profile.face_image_url,
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+            "customer_avatar": customer_avatar,
         })
 
     return result

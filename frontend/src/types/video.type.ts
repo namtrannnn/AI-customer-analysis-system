@@ -44,6 +44,8 @@ export interface DetectedPerson {
   appearances: number;          // số lần xuất hiện
   zone: string | null;          // khu vực phát hiện
   thumbnail_url: string | null; // ảnh khuôn mặt crop
+  customer_id?: number | null;
+  customer_name?: string | null;
 }
 
 export interface VideoAnalysisStats {

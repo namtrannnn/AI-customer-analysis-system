@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { MovementTrack, StoreZone } from "@/types/zone.type";
-import { Activity, Users, Clock, MapPin, HelpCircle } from "lucide-react";
+import { Activity, Users, Clock, MapPin, HelpCircle, User } from "lucide-react";
 
 interface TrackInspectorProps {
   tracks: MovementTrack[];
@@ -101,9 +101,20 @@ export default function TrackInspector({
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div
-                        className="h-3 w-3 shrink-0 rounded-full shadow-xs"
-                        style={{ backgroundColor: t.color }}
-                      />
+                        className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full border-2 bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
+                        style={{ borderColor: t.color }}
+                      >
+                        {t.customer_avatar ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={t.customer_avatar}
+                            alt="Avatar"
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <User className="h-4.5 w-4.5 text-slate-400 dark:text-slate-500" />
+                        )}
+                      </div>
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-700 dark:text-slate-350 truncate">
                           {t.customer_name || t.anonymous_id}

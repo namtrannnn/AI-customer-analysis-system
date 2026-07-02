@@ -1,4 +1,5 @@
 import os
+import time
 import tempfile
 from datetime import datetime
 from fastapi import UploadFile, HTTPException
@@ -12,6 +13,7 @@ from app.models.person_profile import PersonProfile
 from app.models.visit_sessions import VisitSession
 from app.models.movement_track import MovementTrack
 from app.models.zone_visit import ZoneVisit
+from app.utils.supabase_client import supabase
 
 
 def _build_track_to_profile(
@@ -92,7 +94,29 @@ def _get_or_create_person_profile(db, anonymous_code, confidence):
     return profile
 
 
-def _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence):
+def _upload_face_to_supabase(local_path: str, profile_id: str) -> str | None:
+    """Upload face crop image to Supabase Storage, return public URL."""
+    try:
+        if not local_path or not os.path.exists(local_path):
+            return None
+        ext = os.path.splitext(local_path)[1] or ".jpg"
+        file_path = f"person_profiles/face_{profile_id}_{int(time.time())}{ext}"
+        with open(local_path, "rb") as f:
+            file_bytes = f.read()
+        supabase.storage.from_("avatars").upload(
+            path=file_path,
+            file=file_bytes,
+            file_options={"content-type": "image/jpeg"}
+        )
+        public_url = supabase.storage.from_("avatars").get_public_url(file_path)
+        print(f"[video_service] Uploaded face for {profile_id}: {public_url}")
+        return public_url
+    except Exception as e:
+        print(f"[video_service] Failed to upload face for {profile_id}: {e}")
+        return None
+
+
+def _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence, merged_profiles=None):
     saved_count = 0
     skipped_unassigned = 0
     try:
@@ -108,6 +132,17 @@ def _save_tracking_to_db(db, movement_result, track_to_profile, profile_confiden
             print(f"[save_tracking] Saving track_id={track.track_id} → {profile_id_str} ({len(track.points)} pts)")
             confidence = profile_confidence.get(profile_id_str, 0.0)
             person_profile = _get_or_create_person_profile(db, profile_id_str, confidence)
+
+            # Upload best face image to Supabase if available and not yet uploaded
+            if merged_profiles and not person_profile.face_image_url:
+                for mp in merged_profiles:
+                    if mp.get("profile_id") == profile_id_str and mp.get("best_face_image_path"):
+                        face_url = _upload_face_to_supabase(
+                            mp["best_face_image_path"], profile_id_str
+                        )
+                        if face_url:
+                            person_profile.face_image_url = face_url
+                        break
 
             entry = track.entry_time or datetime.now()
             session = VisitSession(
@@ -177,9 +212,10 @@ def _save_tracking_to_db(db, movement_result, track_to_profile, profile_confiden
     return saved_count
 
 
-def _build_detected_customers(pipeline_result: dict, merged_profiles: list) -> list[dict]:
+def _build_detected_customers(pipeline_result: dict, merged_profiles: list, db: Session | None = None) -> list[dict]:
+    raw_list = []
     if merged_profiles:
-        return [
+        raw_list = [
             {
                 "anonymous_id": p.get("profile_id", "UNKNOWN"),
                 "customer_type": "new",
@@ -188,26 +224,59 @@ def _build_detected_customers(pipeline_result: dict, merged_profiles: list) -> l
             for p in merged_profiles
             if p.get("profile_id")
         ]
+    else:
+        detected_customers = pipeline_result.get("detected_customers") or []
+        if detected_customers:
+            raw_list = [
+                {
+                    "anonymous_id": c.get("anonymous_id", "UNKNOWN"),
+                    "customer_type": c.get("customer_type", "new"),
+                    "confidence": float(c.get("confidence") or 0.0),
+                }
+                for c in detected_customers
+            ]
 
-    detected_customers = pipeline_result.get("detected_customers") or []
-    if detected_customers:
-        return [
-            {
-                "anonymous_id": c.get("anonymous_id", "UNKNOWN"),
-                "customer_type": c.get("customer_type", "new"),
-                "confidence": float(c.get("confidence") or 0.0),
-            }
-            for c in detected_customers
-        ]
+    # Build dictionary of profile_id -> base64 crop image from video
+    profile_avatars = {}
+    for p in merged_profiles:
+        pid = p.get("profile_id")
+        path = p.get("best_face_image_path")
+        if pid and path and os.path.exists(path):
+            import base64
+            try:
+                with open(path, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                    profile_avatars[pid] = f"data:image/jpeg;base64,{encoded}"
+            except Exception as e:
+                print(f"[video_service] Error encoding base64 avatar: {e}")
 
-    return [
-        {
-            "anonymous_id": p.get("profile_id", "UNKNOWN"),
-            "customer_type": "new",
-            "confidence": round(float(p.get("best_face_confidence") or 0.0), 2),
-        }
-        for p in merged_profiles
-    ]
+    # Set default avatar from video crop
+    for item in raw_list:
+        item["customer_avatar"] = profile_avatars.get(item["anonymous_id"])
+        item["customer_id"] = None
+        item["customer_name"] = None
+
+    # Enrich with database customer information
+    if db is not None:
+        from app.models.customer import Customer
+        from app.models.customer_identity import CustomerIdentity
+        for item in raw_list:
+            anon_id = item["anonymous_id"]
+            cust_profile = (
+                db.query(Customer)
+                .join(CustomerIdentity, CustomerIdentity.customer_id == Customer.id)
+                .join(PersonProfile, PersonProfile.id == CustomerIdentity.person_profile_id)
+                .filter(PersonProfile.anonymous_code == anon_id)
+                .first()
+            )
+            if cust_profile:
+                item["customer_id"] = cust_profile.id
+                item["customer_name"] = cust_profile.full_name
+                if cust_profile.avatar_url:
+                    item["customer_avatar"] = cust_profile.avatar_url
+                item["customer_type"] = "returning"
+
+    return raw_list
 
 
 async def process_temporary_video(
@@ -243,7 +312,7 @@ async def process_temporary_video(
         merged_profiles: list = pipeline_result.get("merged_profiles", [])
         debug_person_records: list = pipeline_result.get("debug_person_records", [])
         video_fps: float = pipeline_result.get("video_fps", 1.0)
-        detected_customers = _build_detected_customers(pipeline_result, merged_profiles)
+        detected_customers = _build_detected_customers(pipeline_result, merged_profiles, db=db)
         total_customers = len(detected_customers)
         print(f"video_fps={video_fps}")
 
@@ -324,7 +393,7 @@ async def process_temporary_video(
                         track.anonymous_id = track_to_profile.get(track.track_id)
 
                     print("[video_service] Bắt đầu lưu tracking vào DB...")
-                    _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence)
+                    _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence, merged_profiles=merged_profiles)
                     print(
                         f"[video_service] Tracking xong: "
                         f"{movement_result.total_persons} mapped raw tracks, "
