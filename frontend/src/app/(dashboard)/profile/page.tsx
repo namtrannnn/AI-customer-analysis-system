@@ -25,7 +25,7 @@ import {
 
 import Loading from "@/components/ui/Loading";
 import Button from "@/components/ui/Button";
-import { getCurrentUser } from "@/services/auth.service";
+import { changePassword } from "@/services/auth.service";
 import {
   getUserById,
   updateUser,
@@ -35,6 +35,7 @@ import { formatDateTime } from "@/utils/formatDate";
 import type { AuthUser } from "@/types/auth.type";
 import type { User, UserStatus, UserUpdatePayload } from "@/types/user.type";
 import { useToast } from "@/components/ui/ToastProvider";
+import { getUser, setUser as saveUser } from "@/utils/storage";
 
 const ROLE_LABEL_MAP: Record<number, string> = {
   1: "Quản trị viên",
@@ -100,8 +101,7 @@ export default function ProfilePage() {
   }, [user?.full_name]);
 
   useEffect(() => {
-    const currentUser = getCurrentUser();
-
+    const currentUser = getUser<AuthUser>();
     if (!currentUser?.id) {
       router.push("/login");
       return;
@@ -153,8 +153,22 @@ export default function ProfilePage() {
 
     try {
       const updated = await uploadUserAvatar(user.id, file);
-
+      const avatarUrl = updated.avatar_url
+        ? `${updated.avatar_url}?t=${Date.now()}`
+        : null;
       setUser(updated);
+
+      const oldUser = getUser<AuthUser>();
+
+      if (oldUser) {
+        saveUser({
+          ...oldUser,
+          avatar_url: avatarUrl,
+        });
+
+        window.dispatchEvent(new Event("user-updated"));
+      }
+
       toast.success("Cập nhật ảnh đại diện thành công");
     } catch (error) {
       console.error(error);
@@ -186,18 +200,17 @@ export default function ProfilePage() {
       setEmail(updated.email ?? "");
       setPhone(updated.phone ?? "");
 
-      const oldUser = getCurrentUser();
+      const oldUser = getUser<AuthUser>();
 
       if (oldUser) {
-        localStorage.setItem(
-          "user",
-          JSON.stringify({
-            ...oldUser,
-            full_name: updated.full_name,
-            email: updated.email,
-            username: updated.username,
-          }),
-        );
+        saveUser({
+          ...oldUser,
+          full_name: updated.full_name,
+          email: updated.email,
+          username: updated.username,
+        });
+
+        window.dispatchEvent(new Event("user-updated"));
       }
 
       setIsEditingProfile(false);
@@ -232,13 +245,13 @@ export default function ProfilePage() {
       setSavingPassword(true);
 
       // TODO: gắn API đổi mật khẩu ở đây
-      // await changePassword({
-      //   old_password: currentPassword,
-      //   new_password: newPassword,
-      //   confirm_password: confirmPassword,
-      // });
+      await changePassword({
+        old_password: currentPassword,
+        new_password: newPassword,
+        confirm_password: confirmPassword,
+      });
 
-      toast.error("Chưa gắn API đổi mật khẩu");
+      toast.success("Đổi mật khẩu thành công");
 
       setCurrentPassword("");
       setNewPassword("");

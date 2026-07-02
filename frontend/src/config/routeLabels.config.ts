@@ -1,8 +1,10 @@
 export const routeLabels: Record<string, string> = {
-  dashboard: "Tổng quan",
-  customers: "Khách hàng",
-  users: "Người dùng",
-  roles: "Nhóm quyền",
+  dashboard:   "Tổng quan",
+  customers:   "Khách hàng",
+  users:       "Người dùng",
+  roles:       "Nhóm quyền",
   permissions: "Phân quyền",
-  profile: "Trang cá nhân",
+  profile:     "Trang cá nhân",
+  videos:      "Video AI",
+  zones:       "Vùng theo dõi",
 };

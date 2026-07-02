@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   ChevronLeft,
-  Circle,
   LayoutDashboard,
   LockKeyhole,
   ShieldCheck,
   Users,
   UserRoundCog,
+  Video,
+  MapPin,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -20,19 +21,23 @@ interface SidebarProps {
 }
 
 const itemAccent: Record<string, string> = {
-  "/dashboard": "from-blue-500 to-cyan-500",
-  "/customers": "from-violet-500 to-purple-600",
-  "/users": "from-emerald-500 to-teal-600",
-  "/roles": "from-amber-500 to-orange-500",
+  "/dashboard":   "from-blue-500 to-cyan-500",
+  "/customers":   "from-violet-500 to-purple-600",
+  "/users":       "from-emerald-500 to-teal-600",
+  "/roles":       "from-amber-500 to-orange-500",
   "/permissions": "from-rose-500 to-pink-600",
+  "/videos":      "from-fuchsia-500 to-pink-500",
+  "/zones":       "from-teal-500 to-emerald-600",
 };
 
 const itemIconColor: Record<string, string> = {
-  "/dashboard": "text-blue-500 dark:text-blue-400",
-  "/customers": "text-violet-500 dark:text-violet-400",
-  "/users": "text-emerald-500 dark:text-emerald-400",
-  "/roles": "text-amber-500 dark:text-amber-400",
+  "/dashboard":   "text-blue-500 dark:text-blue-400",
+  "/customers":   "text-violet-500 dark:text-violet-400",
+  "/users":       "text-emerald-500 dark:text-emerald-400",
+  "/roles":       "text-amber-500 dark:text-amber-400",
   "/permissions": "text-rose-500 dark:text-rose-400",
+  "/videos":      "text-fuchsia-500 dark:text-fuchsia-400",
+  "/zones":       "text-teal-500 dark:text-teal-400",
 };
 
 const menuItems = [
@@ -70,6 +75,20 @@ const menuItems = [
     icon: LockKeyhole,
     desc: "Permissions",
     permission: "permission.view",
+  },
+  {
+    label: "Video AI",
+    href: "/videos",
+    icon: Video,
+    desc: "Phân tích video",
+    permission: null,
+  },
+  {
+    label: "Vùng theo dõi",
+    href: "/zones",
+    icon: MapPin,
+    desc: "ROI & Tracking",
+    permission: null,
   },
 ];
 

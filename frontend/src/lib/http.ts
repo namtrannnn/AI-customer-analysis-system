@@ -1,5 +1,5 @@
 import axios, { AxiosError } from "axios";
-import { getToken } from "@/utils/storage";
+import { clearAuthStorage, getToken } from "@/utils/storage";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -69,6 +69,16 @@ axiosInstance.interceptors.request.use((config) => {
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error: unknown) => {
+    if (
+      axios.isAxiosError(error) &&
+      error.response?.status === 401 &&
+      typeof window !== "undefined" &&
+      window.location.pathname !== "/login"
+    ) {
+      clearAuthStorage();
+      window.location.href = "/login?reason=unauthorized";
+    }
+
     return Promise.reject(new Error(getErrorMessage(error)));
   },
 );
