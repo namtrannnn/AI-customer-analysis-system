@@ -86,6 +86,9 @@ export async function uploadAndAnalyzeVideo(
           anonymous_id: string;
           customer_type: string;
           confidence: number;
+          customer_id?: number | null;
+          customer_name?: string | null;
+          customer_avatar?: string | null;
         }>;
         message: string;
       };
@@ -129,7 +132,9 @@ export async function uploadAndAnalyzeVideo(
         first_detected_at: "—",
         appearances: 1,
         zone: null,
-        thumbnail_url: `https://api.dicebear.com/7.x/personas/svg?seed=${c.anonymous_id}`,
+        thumbnail_url: c.customer_avatar || `https://api.dicebear.com/7.x/personas/svg?seed=${c.anonymous_id}`,
+        customer_id: c.customer_id,
+        customer_name: c.customer_name,
       })),
     };
 

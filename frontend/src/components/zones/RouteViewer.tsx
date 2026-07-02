@@ -32,10 +32,32 @@ export default function RouteViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const animFrameRef = useRef<number>(0);
+  const faceImgCache = useRef<Map<string, HTMLImageElement | null>>(new Map());
   const [hoveredTrackId, setHoveredTrackId] = useState<number | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
   const [animProgress, setAnimProgress] = useState(1); // 0..1
   const isAnimating = useRef(false);
+
+  // Preload face images
+  useEffect(() => {
+    tracks.forEach((track) => {
+      const url = track.face_image_url;
+      if (url && !faceImgCache.current.has(url)) {
+        faceImgCache.current.set(url, null); // mark as loading
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => {
+          faceImgCache.current.set(url, img);
+          drawAll(animProgress);
+        };
+        img.onerror = () => {
+          faceImgCache.current.set(url, null);
+        };
+        img.src = url;
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tracks]);
 
   // Load image
   useEffect(() => {
@@ -131,15 +153,51 @@ export default function RouteViewer({
           ctx.fill();
         });
 
-        // Start point (circle)
+        // Start point — face image or colored circle
         const start = pts[0];
-        ctx.beginPath();
-        ctx.arc(start.x * W, start.y * H, isActive ? 8 : 6, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(${hexToRgb(track.color)},${alpha})`;
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.8)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
+        const startX = start.x * W;
+        const startY = start.y * H;
+        const radius = isActive ? 12 : 9;
+        const faceImg = track.face_image_url
+          ? faceImgCache.current.get(track.face_image_url)
+          : null;
+
+        if (faceImg) {
+          // Draw circular clipped face image
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.beginPath();
+          ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+          ctx.closePath();
+          ctx.clip();
+          ctx.drawImage(
+            faceImg,
+            startX - radius,
+            startY - radius,
+            radius * 2,
+            radius * 2
+          );
+          ctx.restore();
+
+          // White border ring
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.beginPath();
+          ctx.arc(startX, startY, radius, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255,255,255,0.9)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          // Fallback colored circle
+          ctx.beginPath();
+          ctx.arc(startX, startY, isActive ? 8 : 6, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${hexToRgb(track.color)},${alpha})`;
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.8)";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
 
         // End point (arrow head or current position)
         const last = pts[pts.length - 1];

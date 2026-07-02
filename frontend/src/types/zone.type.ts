@@ -76,6 +76,7 @@ export interface MovementTrack {
   customer_id?: number | null;
   customer_name?: string | null;
   customer_avatar?: string | null;
+  face_image_url?: string | null;
 }
 
 // ─── Zone Visit ───────────────────────────────────────────────────────────────

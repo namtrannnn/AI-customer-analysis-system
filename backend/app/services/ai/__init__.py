@@ -1,9 +1,6 @@
 from app.services.ai.face_detection_service import FaceDetectionService
 from app.services.ai.frame_extractor_service import FrameExtractorService
-from app.services.ai.person_detection_service import (
-    PersonDetectionService,
-    person_detector,
-)
+
 from app.services.ai.roi_service import ROIService, roi_service
 from app.services.ai.zone_enter_exit_service import ZoneEnterExitService
 from app.services.ai.movement_track_pipeline_service import (
@@ -26,7 +23,6 @@ from app.services.ai.video_pipeline_service import (
 __all__ = [
     "FaceDetectionService",
     "FrameExtractorService",
-    "PersonDetectionService",
     "ROIService",
     "ZoneEnterExitService",
     "MovementTrackPipelineService",

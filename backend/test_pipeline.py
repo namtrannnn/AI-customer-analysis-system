@@ -4,7 +4,7 @@ import shutil
 from app.services.ai.video_pipeline_service import video_pipeline_service
 
 def run_full_pipeline_test():
-    video_path = "test_video2.mp4"
+    video_path = "test_video3.mp4"
     if not os.path.exists(video_path):
         print(f"❌ Không tìm thấy video: {video_path}")
         return
@@ -58,6 +58,7 @@ def run_full_pipeline_test():
         print(f"👤 [Hồ sơ: {profile_id}]")
         print(f"   ↳ Gộp từ các Track IDs : {profile['merged_track_ids']}")
         print(f"   ↳ Tổng số frame góp mặt: {profile['total_observations']} frames")
+        print(f"   ↳ Avatar thuộc track: {profile['avatar_track_id']}")
         print(f"   ↳ Độ sắc nét khuôn mặt : {profile['best_face_confidence']:.2f}")
         print("-" * 60)
 

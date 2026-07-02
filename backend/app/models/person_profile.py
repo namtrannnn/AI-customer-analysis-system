@@ -17,6 +17,7 @@ class PersonProfile(Base):
     
     total_visits: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     confidence_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    face_image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, server_default=func.now())
 
