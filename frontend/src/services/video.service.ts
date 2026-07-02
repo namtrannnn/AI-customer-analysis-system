@@ -3,8 +3,6 @@ import type { VideoAnalysisResult, VideoFileMeta } from "@/types/video.type";
 import { VIDEO_CONSTRAINTS } from "@/types/video.type";
 import { http } from "@/lib/http";
 
-const delay = (ms = 400) => new Promise<void>((r) => setTimeout(r, ms));
-
 // ─── Validate file ────────────────────────────────────────────────────────────
 export function validateVideoFile(file: File): string | null {
   if (file.size > VIDEO_CONSTRAINTS.maxSizeBytes) {
@@ -62,7 +60,7 @@ export async function extractVideoMeta(file: File): Promise<VideoFileMeta> {
 // ─── Upload + Analyze (1 bước — khớp BE API) ─────────────────────────────────
 export async function uploadAndAnalyzeVideo(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
 ): Promise<VideoAnalysisResult> {
   // Simulate progress tăng dần trong khi chờ server
   let currentProgress = 0;
@@ -92,8 +90,7 @@ export async function uploadAndAnalyzeVideo(
         }>;
         message: string;
       };
-    }>("/videos/upload", form, {
-      headers: { "Content-Type": "multipart/form-data" },
+    }>("/videos/upload/", form, {
       timeout: 10 * 60 * 1000, // 10 phút — video dài cần nhiều thời gian xử lý
     });
 
@@ -119,7 +116,7 @@ export async function uploadAndAnalyzeVideo(
         new_customers: data.new_customers,
         returning_customers: data.returning_customers,
         identified_customers: data.detected_customers.filter(
-          (c) => c.customer_type === "returning"
+          (c) => c.customer_type === "returning",
         ).length,
         avg_confidence: parseFloat(avgConf.toFixed(3)),
         processing_time_ms: 0,
@@ -127,12 +124,15 @@ export async function uploadAndAnalyzeVideo(
       detected_persons: data.detected_customers.map((c, i) => ({
         id: i + 1,
         anonymous_id: c.anonymous_id,
-        person_type: c.customer_type === "returning" ? "identified" : "anonymous",
+        person_type:
+          c.customer_type === "returning" ? "identified" : "anonymous",
         confidence: c.confidence,
         first_detected_at: "—",
         appearances: 1,
         zone: null,
-        thumbnail_url: c.customer_avatar || `https://api.dicebear.com/7.x/personas/svg?seed=${c.anonymous_id}`,
+        thumbnail_url:
+          c.customer_avatar ||
+          `https://api.dicebear.com/7.x/personas/svg?seed=${c.anonymous_id}`,
         customer_id: c.customer_id,
         customer_name: c.customer_name,
       })),
@@ -143,27 +143,29 @@ export async function uploadAndAnalyzeVideo(
     clearInterval(progressInterval);
     // Axios interceptor đã format message — map sang error type
     const msg = e instanceof Error ? e.message : "Có lỗi xảy ra";
-    if (msg.includes("50MB") || msg.includes("quá lớn")) throw new Error("FILE_TOO_LARGE");
-    if (msg.includes("định dạng") || msg.includes("video/")) throw new Error("INVALID_FORMAT");
+    if (msg.includes("50MB") || msg.includes("quá lớn"))
+      throw new Error("FILE_TOO_LARGE");
+    if (msg.includes("định dạng") || msg.includes("video/"))
+      throw new Error("INVALID_FORMAT");
     throw e;
   }
 }
 
 // ─── Mock (dùng khi chưa có backend) ─────────────────────────────────────────
-export async function uploadAndAnalyzeMock(
-  fileMeta: VideoFileMeta,
-  onProgress?: (percent: number) => void
-): Promise<VideoAnalysisResult> {
-  const steps = [10, 25, 45, 65, 80, 95, 100];
-  for (const step of steps) {
-    await delay(200 + Math.random() * 300);
-    onProgress?.(step);
-  }
+// export async function uploadAndAnalyzeMock(
+//   fileMeta: VideoFileMeta,
+//   onProgress?: (percent: number) => void,
+// ): Promise<VideoAnalysisResult> {
+//   const steps = [10, 25, 45, 65, 80, 95, 100];
+//   for (const step of steps) {
+//     await delay(200 + Math.random() * 300);
+//     onProgress?.(step);
+//   }
 
-  if (fileMeta.duration < 3) throw new Error("NO_PERSON_FOUND");
+//   if (fileMeta.duration < 3) throw new Error("NO_PERSON_FOUND");
 
-  return generateMockAnalysisResult(fileMeta.name, fileMeta.duration);
-}
+//   return generateMockAnalysisResult(fileMeta.name, fileMeta.duration);
+// }
 
 // ─── Format helpers ───────────────────────────────────────────────────────────
 export function formatFileSize(bytes: number): string {
@@ -177,6 +179,7 @@ export function formatDurationVideo(seconds: number): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const s = Math.floor(seconds % 60);
-  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  if (h > 0)
+    return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
