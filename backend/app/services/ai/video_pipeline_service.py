@@ -96,7 +96,7 @@ class VideoProcessingPipelineService:
             self,
             video_path: str,
             output_face_dir: str = "./pipeline_faces",
-            target_fps: float = 10.0,
+            target_fps: float = 5.0,
             debug_video_path: str = None,
         ) -> Dict:
 

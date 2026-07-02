@@ -51,6 +51,10 @@ def process_detections_for_tracking(
 
     track_points: dict[int, list[TrackPoint]] = {}
     track_zones: dict[int, set[int]] = {}
+
+    # THÊM DÒNG NÀY
+    track_route: dict[int, list[int]] = {}
+
     track_entry: dict[int, datetime] = {}
     track_exit: dict[int, datetime] = {}
 
@@ -110,6 +114,10 @@ def process_detections_for_tracking(
             if track_id not in track_points:
                 track_points[track_id] = []
                 track_zones[track_id] = set()
+
+                # THÊM DÒNG NÀY
+                track_route[track_id] = []
+
                 track_entry[track_id] = ts
 
             # append điểm gốc
@@ -139,6 +147,13 @@ def process_detections_for_tracking(
             if zone_id is not None:
                 track_zones[track_id].add(zone_id)
 
+                # THÊM ĐOẠN NÀY
+                if (
+                    len(track_route[track_id]) == 0
+                    or track_route[track_id][-1] != zone_id
+                ):
+                    track_route[track_id].append(zone_id)
+
             positions_this_frame.append(TrackPosition(
                 track_id=track_id,
                 x=cx,
@@ -162,15 +177,25 @@ def process_detections_for_tracking(
         entry = track_entry.get(track_id)
         exit_ = track_exit.get(track_id)
         duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
-      
-        result.tracks.append(TrackResult(
-            track_id=track_id,
-            points=points,
-            zones_visited=sorted(list(track_zones.get(track_id, set()))),
-            entry_time=entry,
-            exit_time=exit_,
-            duration_seconds=duration,
-        ))
+        print(
+            "TRACK:",
+            track_id,
+            "route =",
+            track_route.get(track_id),
+        )
+        result.tracks.append(
+            TrackResult(
+                track_id=track_id,
+                points=points,
+
+                # SỬA DÒNG NÀY
+                zones_visited=track_route.get(track_id, []),
+
+                entry_time=entry,
+                exit_time=exit_,
+                duration_seconds=duration,
+            )
+        )
     # Zone visits
     for v in zone_enter_exit.get_zone_visit_summary():
         result.zone_visits.append(ZoneVisitData(

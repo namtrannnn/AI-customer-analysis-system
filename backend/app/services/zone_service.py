@@ -11,6 +11,8 @@ from app.models.zone_visit import ZoneVisit
 from app.models.movement_track import MovementTrack
 from app.models.person_profile import PersonProfile
 from app.models.visit_sessions import VisitSession
+from app.models.customer import Customer
+from app.models.customer_identity import CustomerIdentity
 from app.schemas.zone_schema import ZoneCreate, ZoneUpdate
 
 # Palette màu mặc định — xoay vòng khi tạo zone mới
@@ -142,12 +144,42 @@ def get_movement_tracks(
             }
             for p in points_raw
         ]
+        # print("\n================ POINT ZONES ================")
+        # print(profile.anonymous_code)
 
-        zones_visited = list({p["zone_id"] for p in points if p["zone_id"]})
+        # print([p["zone_id"] for p in points])
+
+        # print("============================================")
+        zones_visited = []
+
+        for p in points:
+            zid = p["zone_id"]
+
+            if zid is None:
+                continue
+
+            if not zones_visited or zones_visited[-1] != zid:
+                zones_visited.append(zid)
 
         entry = person_row.entry_time
         exit_ = person_row.exit_time
         duration = int((exit_ - entry).total_seconds()) if entry and exit_ else None
+
+        # Check if this person is identified
+        identity = db.query(CustomerIdentity).filter(
+            CustomerIdentity.person_profile_id == person_row.person_profile_id
+        ).first()
+
+        customer_id_val = None
+        customer_name_val = None
+        customer_avatar_val = None
+
+        if identity:
+            customer = db.query(Customer).filter(Customer.id == identity.customer_id).first()
+            if customer:
+                customer_id_val = customer.id
+                customer_name_val = customer.full_name
+                customer_avatar_val = customer.avatar_url
 
         result.append({
             "id": person_row.person_profile_id,  # dùng profile_id làm id
@@ -160,6 +192,9 @@ def get_movement_tracks(
             "duration_seconds": duration,
             "zones_visited": zones_visited,
             "points": points,
+            "customer_id": customer_id_val,
+            "customer_name": customer_name_val,
+            "customer_avatar": customer_avatar_val,
         })
 
     return result

@@ -74,6 +74,9 @@ class MovementTrackResponse(BaseModel):
     duration_seconds: int | None
     zones_visited: list[int]
     points: list[TrackPointResponse]
+    customer_id: int | None = None
+    customer_name: str | None = None
+    customer_avatar: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

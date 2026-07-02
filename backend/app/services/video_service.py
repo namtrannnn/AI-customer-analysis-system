@@ -136,7 +136,7 @@ async def process_temporary_video(
         # ── 1. Video pipeline: nhận diện khuôn mặt ───────────────────────────
         pipeline_result: dict = video_pipeline_service.process_video(
             temp_video.name,
-            target_fps=10.0,
+            target_fps=5.0,
         )
 
         merged_profiles: list = pipeline_result.get("merged_profiles", [])
@@ -209,7 +209,15 @@ async def process_temporary_video(
                         track.anonymous_id = track_to_profile.get(
                             track.track_id, f"TRK_{track.track_id:04d}"
                         )
-
+                    # THÊM ĐOẠN NÀY
+                    print("\n================ TRACK CHECK ================")
+                    for track in movement_result.tracks:
+                        print(
+                            f"{track.anonymous_id} | "
+                            f"track_id={track.track_id} | "
+                            f"zones={track.zones_visited}"
+                        )
+                    print("=============================================\n")
                     print("[video_service] Bắt đầu lưu tracking vào DB...")
                     _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence)
                     print(
