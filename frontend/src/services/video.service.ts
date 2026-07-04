@@ -1,4 +1,3 @@
-import { generateMockAnalysisResult } from "@/mocks/videos.mock";
 import type { VideoAnalysisResult, VideoFileMeta } from "@/types/video.type";
 import { VIDEO_CONSTRAINTS } from "@/types/video.type";
 import { http } from "@/lib/http";
