@@ -91,6 +91,11 @@ export async function uploadAndAnalyzeVideo(
       };
     }>("/videos/upload", form, {
       timeout: 10 * 60 * 1000, // 10 phút — video dài cần nhiều thời gian xử lý
+      headers: {
+        // Xóa Content-Type default (application/json) để axios tự set
+        // multipart/form-data với boundary đúng cho FormData
+        "Content-Type": undefined,
+      },
     });
 
     clearInterval(progressInterval);
