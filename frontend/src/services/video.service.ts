@@ -73,7 +73,7 @@ export async function uploadAndAnalyzeVideo(
     form.append("file", file);
 
     // Dùng http.raw để axios tự set Content-Type multipart/form-data với boundary
-    const res = await http.raw.post<{
+    const res = await http.raw.post<{ // no trailing slash — avoids 307 redirect that loses HTTPS
       status: string;
       data: {
         total_customers: number;
@@ -89,7 +89,7 @@ export async function uploadAndAnalyzeVideo(
         }>;
         message: string;
       };
-    }>("/videos/upload/", form, {
+    }>("/videos/upload", form, {
       timeout: 10 * 60 * 1000, // 10 phút — video dài cần nhiều thời gian xử lý
     });
 
