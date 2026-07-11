@@ -3,6 +3,13 @@ from sqlalchemy import BigInteger, DateTime, Float, ForeignKey, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 from app.database.base import Base
 
+# Import referenced models so their tables are registered in Base.metadata
+# before SQLAlchemy resolves this model's foreign keys.
+from app.models.camera import Camera  # noqa: F401
+from app.models.person_profile import PersonProfile  # noqa: F401
+from app.models.video import Video  # noqa: F401
+from app.models.visit_sessions import VisitSession  # noqa: F401
+
 class VisitDetection(Base):
     __tablename__ = "visit_detections"
 
