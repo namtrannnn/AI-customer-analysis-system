@@ -8,25 +8,35 @@ from typing import Any
 
 @dataclass
 class ProcessingJobState:
+    # BE-01: Trạng thái tạm thời của một lần xử lý video.
+    # Object này nằm trong memory, dùng cho status API và WebSocket stream.
     job_id: str
     file_name: str
     temp_video_path: str
     status: str = "pending"
+    ai_job_id: str | None = None
+    processing_session_id: str | None = None
     progress: dict[str, Any] | None = None
     error: str | None = None
     result: dict[str, Any] | None = None
     created_at: datetime = field(default_factory=datetime.now)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # Mỗi subscriber là một queue của WebSocket client đang nghe job này.
     subscribers: list[asyncio.Queue] = field(default_factory=list)
+    # Giữ lại event gần nhất de client reconnect van nhan duoc trang thai moi.
     recent_events: list[dict[str, Any]] = field(default_factory=list)
+    # Map person/session cục bộ của job, dùng khi cần đồng bộ VisitSession.
     person_session_map: dict[str, int] = field(default_factory=dict)
 
     def snapshot(self) -> dict[str, Any]:
+        # Snapshot là dữ liệu BE-03 trả về, không expose temp path/subscribers.
         return {
             "job_id": self.job_id,
             "file_name": self.file_name,
             "status": self.status,
+            "ai_job_id": self.ai_job_id,
+            "processing_session_id": self.processing_session_id,
             "progress": self.progress,
             "error": self.error,
             "result": self.result,
@@ -68,6 +78,7 @@ class ProcessingJobManager:
             return None
         queue: asyncio.Queue = asyncio.Queue(maxsize=200)
         job.subscribers.append(queue)
+        # Replay một phần event gần nhất để FE không mất context khi reconnect.
         for event in job.recent_events[-50:]:
             await queue.put(event)
         if job.status == "completed" and job.result is not None:
@@ -119,6 +130,7 @@ class ProcessingJobManager:
         job = self.get_job(job_id)
         if not job:
             return
+        # BE-04: Lưu event và fan-out đến tất cả WebSocket queue của job.
         job.recent_events.append(event)
         if len(job.recent_events) > 200:
             job.recent_events = job.recent_events[-200:]
@@ -129,6 +141,7 @@ class ProcessingJobManager:
         job = self.get_job(job_id)
         if not job:
             return
+        # File upload chỉ cần tồn tại trong lúc pipeline đang xử lý.
         path = job.temp_video_path
         if path and os.path.exists(path):
             try:
@@ -138,6 +151,7 @@ class ProcessingJobManager:
 
     def _put_event(self, queue: asyncio.Queue, event: dict[str, Any]) -> None:
         def put_now() -> None:
+            # Nếu FE đọc chậm, bỏ event cũ nhất để stream không bị treo.
             if queue.full():
                 try:
                     queue.get_nowait()

@@ -1910,10 +1910,17 @@ class VideoProcessingPipelineService(
             display_stage = str(r.get("display_stage") or "PENDING")
             display_profile_id = r.get("display_profile_id")
             anonymous_code = display_profile_id or display_stage
+            confidence = float(
+                r.get("confidence")
+                or r.get("face_confidence")
+                or r.get("best_face_confidence")
+                or 0.0
+            )
             persons.append({
                 "track_id": int(r.get("track_id")),
                 "bbox": [float(v) for v in (r.get("bbox") or [])],
                 "anonymous_code": anonymous_code,
+                "confidence": confidence,
                 "display_stage": display_stage,
                 "status": r.get("display_text") or r.get("debug_status_snapshot") or display_stage,
                 "observation_count": int(r.get("observation_count", 0) or 0),
@@ -2804,6 +2811,7 @@ class VideoProcessingPipelineService(
                         "frame_index": frame_data.frame_index,
                         "track_id": track_id,
                         "bbox": bbox,
+                        "confidence": float(p.get("confidence") or 0.0),
                         "frame_width": frame_width,
                         "frame_height": frame_height,
                         "observation_count": obs_count,
