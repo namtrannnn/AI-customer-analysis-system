@@ -46,3 +46,8 @@ class PersonProfileDetail(PersonProfileBaseResponse):
     visit_total: int
     visit_sessions: list[PersonProfileVisitSession]
 
+
+class PersonProfileStatsResponse(BaseModel):
+    total_count: int
+    new_count: int
+    returning_count: int

@@ -1,6 +1,8 @@
+from datetime import date, datetime, time
 from typing import Literal
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.customer import Customer
@@ -11,11 +13,13 @@ from app.schemas.person_profile_schema import (
     PersonProfileCustomerSummary,
     PersonProfileDetail,
     PersonProfileListItem,
+    PersonProfileStatsResponse,
     PersonProfileVisitSession,
 )
 
 
 SortOrder = Literal["asc", "desc"]
+VisitorType = Literal["all", "new", "returning"]
 
 
 def get_visitor_type(total_visits: int) -> str:
@@ -30,6 +34,64 @@ def _profile_order(sort_order: SortOrder):
     if sort_order == "asc":
         return PersonProfile.last_seen_at.asc().nullslast()
     return PersonProfile.last_seen_at.desc().nullslast()
+
+
+def _apply_visitor_type_filter(query, visitor_type: VisitorType):
+    if visitor_type == "new":
+        return query.filter(PersonProfile.total_visits == 1)
+    if visitor_type == "returning":
+        return query.filter(PersonProfile.total_visits > 1)
+    return query
+
+
+def _apply_date_filter(
+    query,
+    start_date: date | None,
+    end_date: date | None,
+):
+    if start_date:
+        query = query.filter(
+            PersonProfile.last_seen_at >= datetime.combine(start_date, time.min)
+        )
+    if end_date:
+        query = query.filter(
+            PersonProfile.last_seen_at <= datetime.combine(end_date, time.max)
+        )
+    return query
+
+
+def _build_person_profile_query(
+    db: Session,
+    visitor_type: VisitorType = "all",
+    search_query: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+):
+    query = db.query(PersonProfile)
+    query = _apply_visitor_type_filter(query, visitor_type)
+    query = _apply_date_filter(query, start_date, end_date)
+
+    if search_query:
+        search_pattern = f"%{search_query.strip()}%"
+        matched_customer_profiles = (
+            db.query(CustomerIdentity.person_profile_id)
+            .join(Customer, CustomerIdentity.customer_id == Customer.id)
+            .filter(
+                or_(
+                    Customer.full_name.ilike(search_pattern),
+                    Customer.customer_code.ilike(search_pattern),
+                    Customer.phone.ilike(search_pattern),
+                )
+            )
+        )
+        query = query.filter(
+            or_(
+                PersonProfile.anonymous_code.ilike(search_pattern),
+                PersonProfile.id.in_(matched_customer_profiles),
+            )
+        )
+
+    return query
 
 
 def _customer_summary(customer: Customer | None) -> PersonProfileCustomerSummary | None:
@@ -89,9 +151,19 @@ def get_person_profiles(
     skip: int = 0,
     limit: int = 100,
     sort_order: SortOrder = "desc",
+    visitor_type: VisitorType = "all",
+    search_query: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> list[PersonProfileListItem]:
     profiles = (
-        db.query(PersonProfile)
+        _build_person_profile_query(
+            db=db,
+            visitor_type=visitor_type,
+            search_query=search_query,
+            start_date=start_date,
+            end_date=end_date,
+        )
         .order_by(_profile_order(sort_order), PersonProfile.id.desc())
         .offset(skip)
         .limit(limit)
@@ -105,8 +177,55 @@ def get_person_profiles(
     ]
 
 
-def count_person_profiles(db: Session) -> int:
-    return db.query(PersonProfile).count()
+def count_person_profiles(
+    db: Session,
+    visitor_type: VisitorType = "all",
+    search_query: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> int:
+    return _build_person_profile_query(
+        db=db,
+        visitor_type=visitor_type,
+        search_query=search_query,
+        start_date=start_date,
+        end_date=end_date,
+    ).count()
+
+
+def get_person_profile_stats(
+    db: Session,
+    search_query: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+) -> PersonProfileStatsResponse:
+    total_count = count_person_profiles(
+        db=db,
+        visitor_type="all",
+        search_query=search_query,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    new_count = count_person_profiles(
+        db=db,
+        visitor_type="new",
+        search_query=search_query,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    returning_count = count_person_profiles(
+        db=db,
+        visitor_type="returning",
+        search_query=search_query,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    return PersonProfileStatsResponse(
+        total_count=total_count,
+        new_count=new_count,
+        returning_count=returning_count,
+    )
 
 
 def get_person_profile_detail(
@@ -143,4 +262,3 @@ def get_person_profile_detail(
             for visit in visits
         ],
     )
-

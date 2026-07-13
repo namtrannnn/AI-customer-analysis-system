@@ -120,64 +120,34 @@ function mapProfileDetail(profile: PersonProfileDetail): VisitorProfile {
   };
 }
 
-function applyClientFilters(
-  profiles: VisitorProfile[],
+function buildProfileParams(
   filters: VisitorFilters,
-): VisitorProfile[] {
-  let result = [...profiles];
-
-  if (filters.search) {
-    const keyword = filters.search.toLowerCase();
-    result = result.filter(
-      (item) =>
-        item.anonymous_code.toLowerCase().includes(keyword) ||
-        item.customer_name?.toLowerCase().includes(keyword) ||
-        item.customer_code?.toLowerCase().includes(keyword),
-    );
-  }
-
-  if (filters.visitor_type && filters.visitor_type !== "all") {
-    result = result.filter((item) =>
-      filters.visitor_type === "new"
-        ? item.total_visits === 1
-        : item.total_visits > 1,
-    );
-  }
-
-  if (filters.start_date) {
-    const start = new Date(filters.start_date);
-    result = result.filter((item) => new Date(item.last_seen_at) >= start);
-  }
-
-  if (filters.end_date) {
-    const end = new Date(`${filters.end_date}T23:59:59`);
-    result = result.filter((item) => new Date(item.last_seen_at) <= end);
-  }
-
-  return result;
+  skip?: number,
+  limit?: number,
+) {
+  return {
+    skip,
+    limit,
+    sort_order: "desc",
+    visitor_type: filters.visitor_type ?? "all",
+    q: filters.search || undefined,
+    start_date: filters.start_date || undefined,
+    end_date: filters.end_date || undefined,
+  };
 }
 
-function hasClientFilters(filters: VisitorFilters): boolean {
-  return Boolean(
-    filters.search ||
-      (filters.visitor_type && filters.visitor_type !== "all") ||
-      filters.start_date ||
-      filters.end_date,
-  );
-}
-
-async function fetchProfilePage(skip = 0, limit = 20): Promise<{
+async function fetchProfilePage(
+  filters: VisitorFilters,
+  skip = 0,
+  limit = 20,
+): Promise<{
   profiles: VisitorProfile[];
   total: number;
 }> {
   const response = await http.raw.get<ApiResponse<PersonProfileListItem[]>>(
     "/person-profiles",
     {
-      params: {
-        skip,
-        limit,
-        sort_order: "desc",
-      },
+      params: buildProfileParams(filters, skip, limit),
     },
   );
 
@@ -192,13 +162,8 @@ export async function getVisitorProfiles(
   skip = 0,
   limit = 20,
 ): Promise<VisitorProfile[]> {
-  if (!hasClientFilters(filters)) {
-    const { profiles } = await fetchProfilePage(skip, limit);
-    return profiles;
-  }
-
-  const { profiles } = await fetchProfilePage(0, 100);
-  return applyClientFilters(profiles, filters).slice(skip, skip + limit);
+  const { profiles } = await fetchProfilePage(filters, skip, limit);
+  return profiles;
 }
 
 export async function getVisitorProfileDetail(
@@ -217,17 +182,26 @@ export async function getVisitorProfileDetail(
   return mapProfileDetail(response.data.data);
 }
 
-export async function getVisitorStats(): Promise<{
+export async function getVisitorStats(
+  filters: VisitorFilters = {},
+): Promise<{
   new_count: number;
   returning_count: number;
   total_count: number;
 }> {
-  const { profiles, total } = await fetchProfilePage(0, 100);
+  const response = await http.raw.get<
+    ApiResponse<{
+      new_count: number;
+      returning_count: number;
+      total_count: number;
+    }>
+  >("/person-profiles/stats", {
+    params: {
+      q: filters.search || undefined,
+      start_date: filters.start_date || undefined,
+      end_date: filters.end_date || undefined,
+    },
+  });
 
-  return {
-    new_count: profiles.filter((profile) => profile.total_visits === 1).length,
-    returning_count: profiles.filter((profile) => profile.total_visits > 1)
-      .length,
-    total_count: total,
-  };
+  return response.data.data;
 }

@@ -46,7 +46,7 @@ export default function VisitorProfilesPage() {
     try {
       const [profilesData, statsData] = await Promise.all([
         getVisitorProfiles(filters, (page - 1) * limit, limit),
-        getVisitorStats()
+        getVisitorStats(filters)
       ]);
       setProfiles(profilesData);
       setStats(statsData);
