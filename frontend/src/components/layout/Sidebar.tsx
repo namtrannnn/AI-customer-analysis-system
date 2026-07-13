@@ -12,6 +12,10 @@ import {
   UserRoundCog,
   Video,
   MapPin,
+  Clock,
+  TrendingUp,
+  Sparkles,
+  Eye,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -28,6 +32,10 @@ const itemAccent: Record<string, string> = {
   "/permissions": "from-rose-500 to-pink-600",
   "/videos":      "from-fuchsia-500 to-pink-500",
   "/zones":       "from-teal-500 to-emerald-600",
+  "/stay-time":   "from-indigo-500 to-violet-600",
+  "/daily-stats": "from-cyan-500 to-blue-600",
+  "/segments":    "from-orange-500 to-amber-600",
+  "/visit-profiles": "from-emerald-500 to-teal-600",
 };
 
 const itemIconColor: Record<string, string> = {
@@ -38,6 +46,10 @@ const itemIconColor: Record<string, string> = {
   "/permissions": "text-rose-500 dark:text-rose-400",
   "/videos":      "text-fuchsia-500 dark:text-fuchsia-400",
   "/zones":       "text-teal-500 dark:text-teal-400",
+  "/stay-time":   "text-indigo-500 dark:text-indigo-400",
+  "/daily-stats": "text-cyan-500 dark:text-cyan-400",
+  "/segments":    "text-orange-500 dark:text-orange-400",
+  "/visit-profiles": "text-emerald-500 dark:text-emerald-400",
 };
 
 const menuItems = [
@@ -54,6 +66,13 @@ const menuItems = [
     icon: Users,
     desc: "Customer data",
     permission: "customer.view",
+  },
+  {
+    label: "Khách ghé thăm",
+    href: "/visit-profiles",
+    icon: Eye,
+    desc: "Camera logs & profiles",
+    permission: null,
   },
   {
     label: "Người dùng",
@@ -90,7 +109,29 @@ const menuItems = [
     desc: "ROI & Tracking",
     permission: null,
   },
+  {
+    label: "Thời gian lưu trú",
+    href: "/stay-time",
+    icon: Clock,
+    desc: "Stay duration metrics",
+    permission: null,
+  },
+  {
+    label: "Thống kê khách",
+    href: "/daily-stats",
+    icon: TrendingUp,
+    desc: "Daily visitors report",
+    permission: null,
+  },
+  {
+    label: "Phân nhóm AI",
+    href: "/segments",
+    icon: Sparkles,
+    desc: "AI Customer Segments",
+    permission: null,
+  },
 ];
+
 
 export default function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
