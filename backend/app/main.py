@@ -17,6 +17,8 @@ from app.routers import video_router
 from app.routers import zone_router
 from app.routers import track_router
 from app.routers import person_profile_router
+from app.routers import duration_router
+from app.routers import daily_statistics_router
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -46,6 +48,9 @@ app.include_router(permission_router.router)
 app.include_router(video_router.router)
 app.include_router(zone_router.router)
 app.include_router(track_router.router)
+app.include_router(duration_router.router)
+app.include_router(daily_statistics_router.router)
+
 app.include_router(person_profile_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
