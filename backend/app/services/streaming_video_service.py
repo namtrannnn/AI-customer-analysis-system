@@ -159,7 +159,7 @@ class StreamingVideoService:
                 ai_job.job_id,
                 background=False,
                 output_face_dir=output_face_dir,
-                target_fps=6.0,
+                target_fps=10.0,
                 debug_video_path=None,
                 stream_frame_dir=None,
                 stream_emit_every_n_frames=1,

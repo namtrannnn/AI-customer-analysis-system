@@ -16,6 +16,7 @@ from app.routers import permission_router
 from app.routers import video_router
 from app.routers import zone_router
 from app.routers import track_router
+from app.routers import person_profile_router
 
 app = FastAPI(
     title="AI Customer Analysis API",
@@ -45,6 +46,7 @@ app.include_router(permission_router.router)
 app.include_router(video_router.router)
 app.include_router(zone_router.router)
 app.include_router(track_router.router)
+app.include_router(person_profile_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)
