@@ -1,6 +1,3 @@
-/**
- * Service xử lý Luồng Stream Video (Realtime Streaming)
- */
 import { http } from "@/lib/http";
 import type { DetectedPerson, VideoAnalysisResult } from "@/types/video.type";
 
@@ -17,14 +14,48 @@ export interface StreamProgressPayload {
 
 // Kiểu dữ liệu nhận diện khuôn mặt từng frame từ Stream
 export interface StreamDetectionPayload {
-  frame_index: number;
   track_id: number;
-  anonymous_code: string;
+  frame_index: number;
+  bbox: [number, number, number, number];
   confidence: number;
-  bbox: [number, number, number, number]; // Tọa độ tương đối [x1, y1, x2, y2]
+
+  session_profile_id?: string | null;
+  person_profile_id?: number | null;
+
+  anonymous_code: string;
+  customer_type?: "new" | "returning" | string;
+
   customer_id?: number | null;
   customer_name?: string | null;
+
   customer_avatar?: string | null;
+  current_video_avatar?: string | null;
+  stored_profile_avatar?: string | null;
+  identified_customer_avatar?: string | null;
+
+  total_visits?: number | null;
+}
+
+
+export interface GlobalIdentityItem {
+  person_profile_id: number;
+  anonymous_code: string;
+  customer_type: "new" | "returning" | string;
+  total_visits: number;
+  matched_similarity?: number;
+  customer_id?: number | null;
+  customer_name?: string | null;
+  current_video_avatar?: string | null;
+}
+
+export interface GlobalIdentityResultPayload {
+  session_profile_mapping?: Record<string, GlobalIdentityItem>;
+  track_identity_mapping?: Record<
+    string,
+    GlobalIdentityItem & {
+      session_profile_id?: string;
+    }
+  >;
 }
 
 interface StreamCallbacks {
@@ -55,6 +86,10 @@ export function connectJobStream(
     return connectMockStream(file, videoDuration, callbacks, () => isCancelled, disconnect);
   } else {
     let socket: WebSocket | null = null;
+
+    // Lưu detection mới nhất theo track để khi backend gửi
+    // global_identity_result có thể cập nhật lại New/Returning.
+    const latestDetectionByTrack = new Map<number, StreamDetectionPayload>();
 
     void (async () => {
       try {
@@ -87,7 +122,61 @@ export function connectJobStream(
             if (msg.type === "progress") {
               callbacks.onProgress(msg.data);
             } else if (msg.type === "detection") {
-              callbacks.onDetection(msg.data);
+              const detection = msg.data as StreamDetectionPayload;
+              latestDetectionByTrack.set(detection.track_id, detection);
+              callbacks.onDetection(detection);
+            } else if (msg.type === "global_identity_result") {
+              const payload = msg as GlobalIdentityResultPayload & {
+                data?: GlobalIdentityResultPayload;
+              };
+
+              const identityData = payload.data ?? payload;
+              const trackMapping =
+                identityData.track_identity_mapping ?? {};
+
+              Object.entries(trackMapping).forEach(
+                ([trackIdText, identity]) => {
+                  const trackId = Number(trackIdText);
+                  const previous = latestDetectionByTrack.get(trackId);
+
+                  if (!previous || !Number.isFinite(trackId)) {
+                    return;
+                  }
+
+                  const updated: StreamDetectionPayload = {
+                    ...previous,
+                    track_id: trackId,
+                    session_profile_id:
+                      identity.session_profile_id ??
+                      previous.session_profile_id ??
+                      previous.anonymous_code,
+                    person_profile_id:
+                      identity.person_profile_id,
+                    anonymous_code:
+                      identity.anonymous_code ??
+                      previous.anonymous_code,
+                    customer_type:
+                      identity.customer_type,
+                    total_visits:
+                      identity.total_visits,
+                    customer_id:
+                      identity.customer_id ??
+                      previous.customer_id ??
+                      null,
+                    customer_name:
+                      identity.customer_name ??
+                      previous.customer_name ??
+                      null,
+                    current_video_avatar:
+                      identity.current_video_avatar ??
+                      previous.current_video_avatar ??
+                      null,
+                  };
+
+                  latestDetectionByTrack.set(trackId, updated);
+                  callbacks.onDetection(updated);
+                },
+              );
             } else if (msg.type === "complete") {
               callbacks.onComplete(msg.data);
               socket?.close();

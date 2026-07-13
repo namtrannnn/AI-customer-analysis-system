@@ -15,6 +15,11 @@ from app.services.ai.streaming.streaming_video_pipeline_service import (
     ProcessingJobState,
 )
 from app.services.ai.track_from_detection_service import process_detections_for_tracking
+from app.services.ai.global_customer_identity_service import (
+    global_customer_identity_service,
+    SessionIdentityResult,
+)
+from app.models.face_embedding import FaceEmbedding
 from app.models.store_zone import StoreZone
 from app.models.person_profile import PersonProfile
 from app.models.visit_sessions import VisitSession
@@ -334,6 +339,403 @@ def _build_detected_customers(pipeline_result: dict, merged_profiles: list, db: 
     return raw_list
 
 
+def _identity_results_by_session_pid(
+    results: list[SessionIdentityResult],
+) -> dict[str, SessionIdentityResult]:
+    return {
+        str(item.session_profile_id): item
+        for item in results
+    }
+
+
+def _build_track_to_person_profile_id(
+    track_to_session_profile: dict[int, str],
+    identity_results: list[SessionIdentityResult],
+) -> dict[int, int]:
+    by_session_pid = _identity_results_by_session_pid(
+        identity_results
+    )
+    mapping: dict[int, int] = {}
+
+    for track_id, session_pid in track_to_session_profile.items():
+        result = by_session_pid.get(str(session_pid))
+        if result is not None:
+            mapping[int(track_id)] = int(
+                result.person_profile_id
+            )
+
+    return mapping
+
+
+def _find_customer_for_person_profile(
+    db: Session,
+    person_profile_id: int,
+):
+    try:
+        from app.models.customer import Customer
+        from app.models.customer_identity import CustomerIdentity
+
+        return (
+            db.query(Customer)
+            .join(
+                CustomerIdentity,
+                CustomerIdentity.customer_id == Customer.id,
+            )
+            .filter(
+                CustomerIdentity.person_profile_id
+                == int(person_profile_id)
+            )
+            .first()
+        )
+    except Exception as exc:
+        print(
+            "[video_service] Không enrich được Customer cho "
+            f"person_profile_id={person_profile_id}: {exc}"
+        )
+        return None
+
+
+def _upload_identity_avatars(
+    *,
+    db: Session,
+    identity_results: list[SessionIdentityResult],
+) -> None:
+    """
+    Upload best face trước khi temp_face_dir bị xóa.
+    Mỗi PersonProfile chỉ upload khi chưa có face_image_url.
+    """
+    handled_profile_ids: set[int] = set()
+
+    for result in identity_results:
+        person_profile_id = int(result.person_profile_id)
+        if person_profile_id in handled_profile_ids:
+            continue
+        handled_profile_ids.add(person_profile_id)
+
+        person = db.get(PersonProfile, person_profile_id)
+        if person is None or person.face_image_url:
+            continue
+
+        local_path = result.face_image_path
+        if not local_path or not os.path.exists(local_path):
+            continue
+
+        public_url = _upload_face_to_supabase(
+            local_path,
+            str(person.anonymous_code),
+        )
+        if not public_url:
+            continue
+
+        person.face_image_url = public_url
+
+        # Gắn URL vào embedding mới nhất chưa có image_url.
+        latest_embedding = (
+            db.query(FaceEmbedding)
+            .filter(
+                FaceEmbedding.person_profile_id
+                == person_profile_id
+            )
+            .order_by(FaceEmbedding.captured_at.desc())
+            .first()
+        )
+        if (
+            latest_embedding is not None
+            and not latest_embedding.image_url
+        ):
+            latest_embedding.image_url = public_url
+
+    db.flush()
+
+
+def _encode_current_face_as_data_url(local_path: str | None) -> str | None:
+    if not local_path or not os.path.exists(local_path):
+        return None
+
+    import base64
+
+    try:
+        with open(local_path, "rb") as image_file:
+            encoded = base64.b64encode(image_file.read()).decode("utf-8")
+        return f"data:image/jpeg;base64,{encoded}"
+    except Exception as exc:
+        print(f"[video_service] Không encode được current face: {exc}")
+        return None
+
+
+def _build_global_detected_customers(
+    *,
+    db: Session | None,
+    identity_results: list[SessionIdentityResult],
+) -> list[dict]:
+    customers: list[dict] = []
+    emitted_profile_ids: set[int] = set()
+
+    for result in identity_results:
+        person_profile_id = int(result.person_profile_id)
+        if person_profile_id in emitted_profile_ids:
+            continue
+        emitted_profile_ids.add(person_profile_id)
+
+        person = (
+            db.get(PersonProfile, person_profile_id)
+            if db is not None
+            else None
+        )
+        linked_customer = (
+            _find_customer_for_person_profile(
+                db,
+                person_profile_id,
+            )
+            if db is not None
+            else None
+        )
+
+        customer_type = result.customer_type
+        customer_name = None
+        customer_id = None
+
+        # Trong màn hình đang phân tích, luôn ưu tiên khuôn mặt vừa cắt từ
+        # video hiện tại. Avatar DB chỉ là hồ sơ lưu trữ/fallback.
+        current_video_avatar = _encode_current_face_as_data_url(
+            result.face_image_path
+        )
+        stored_profile_avatar = (
+            person.face_image_url
+            if person is not None
+            else None
+        )
+        identified_customer_avatar = None
+
+        if linked_customer is not None:
+            customer_id = linked_customer.id
+            customer_name = linked_customer.full_name
+            identified_customer_avatar = linked_customer.avatar_url
+
+        avatar = (
+            current_video_avatar
+            or identified_customer_avatar
+            or stored_profile_avatar
+        )
+
+        customers.append({
+            "session_profile_id": result.session_profile_id,
+            "person_profile_id": person_profile_id,
+            "anonymous_id": result.anonymous_code,
+            "customer_type": customer_type,
+            "total_visits": (
+                int(person.total_visits or 0)
+                if person is not None
+                else result.total_visits
+            ),
+            "first_seen_at": (
+                person.first_seen_at.isoformat()
+                if person is not None
+                and person.first_seen_at is not None
+                else None
+            ),
+            "last_seen_at": (
+                person.last_seen_at.isoformat()
+                if person is not None
+                and person.last_seen_at is not None
+                else None
+            ),
+            "confidence": round(
+                float(
+                    person.confidence_avg
+                    if person is not None
+                    and person.confidence_avg is not None
+                    else result.confidence
+                ),
+                4,
+            ),
+            "matched_similarity": round(
+                float(result.matched_similarity),
+                4,
+            ),
+            "matched_margin": round(
+                float(result.matched_margin),
+                4,
+            ),
+            # Avatar dùng cho card/overlay trong lần phân tích hiện tại.
+            "customer_avatar": avatar,
+            "current_video_avatar": current_video_avatar,
+            # Avatar đã lưu của profile toàn cục, dùng cho trang hồ sơ.
+            "stored_profile_avatar": stored_profile_avatar,
+            "identified_customer_avatar": identified_customer_avatar,
+            "customer_id": customer_id,
+            "customer_name": customer_name,
+        })
+
+    return customers
+
+
+def _save_global_visits_and_tracking(
+    *,
+    db: Session,
+    movement_result,
+    track_to_person_profile_id: dict[int, int],
+) -> int:
+    """
+    Một PersonProfile chỉ có một VisitSession cho một video,
+    kể cả người đó có nhiều raw track_id.
+    """
+    tracks_by_person: dict[int, list] = {}
+    skipped_tracks = 0
+
+    for track in movement_result.tracks:
+        person_profile_id = track_to_person_profile_id.get(
+            int(track.track_id)
+        )
+        if person_profile_id is None or not track.points:
+            skipped_tracks += 1
+            continue
+
+        tracks_by_person.setdefault(
+            int(person_profile_id),
+            [],
+        ).append(track)
+
+    visit_by_person: dict[int, VisitSession] = {}
+
+    try:
+        for person_profile_id, tracks in tracks_by_person.items():
+            entries = [
+                track.entry_time
+                for track in tracks
+                if track.entry_time is not None
+            ]
+            exits = [
+                track.exit_time
+                for track in tracks
+                if track.exit_time is not None
+            ]
+
+            entry_time = (
+                min(entries)
+                if entries
+                else datetime.now()
+            )
+            exit_time = max(exits) if exits else None
+
+            duration_seconds = None
+            if exit_time is not None:
+                duration_seconds = max(
+                    0,
+                    int(
+                        (
+                            exit_time - entry_time
+                        ).total_seconds()
+                    ),
+                )
+            else:
+                durations = [
+                    int(track.duration_seconds or 0)
+                    for track in tracks
+                ]
+                duration_seconds = (
+                    max(durations) if durations else 0
+                )
+
+            visit = VisitSession(
+                person_profile_id=person_profile_id,
+                entry_time=entry_time,
+                exit_time=exit_time,
+                duration_seconds=duration_seconds,
+                is_identified=False,
+            )
+            db.add(visit)
+            db.flush()
+            visit_by_person[person_profile_id] = visit
+
+            for track in tracks:
+                for point in track.points:
+                    db.add(MovementTrack(
+                        visit_session_id=visit.id,
+                        person_profile_id=person_profile_id,
+                        zone_id=point.zone_id,
+                        position_x=round(point.x, 4),
+                        position_y=round(point.y, 4),
+                        tracked_at=point.tracked_at,
+                    ))
+
+        for zone_visit in movement_result.zone_visits:
+            person_profile_id = (
+                track_to_person_profile_id.get(
+                    int(zone_visit.track_id)
+                )
+            )
+            if person_profile_id is None:
+                continue
+
+            visit = visit_by_person.get(person_profile_id)
+            if visit is None:
+                continue
+
+            db.add(ZoneVisit(
+                visit_session_id=visit.id,
+                person_profile_id=person_profile_id,
+                zone_id=zone_visit.zone_id,
+                enter_time=(
+                    zone_visit.enter_time
+                    or visit.entry_time
+                ),
+                leave_time=zone_visit.leave_time,
+                duration_seconds=zone_visit.duration_seconds,
+            ))
+
+        db.commit()
+        print(
+            "[video_service] Đã lưu "
+            f"{len(visit_by_person)} VisitSession toàn cục; "
+            f"skip {skipped_tracks} raw tracks"
+        )
+        return len(visit_by_person)
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _publish_global_identity_result(
+    *,
+    processing_session_id: str,
+    job_id: str,
+    identity_results: list[SessionIdentityResult],
+    track_to_session_profile: dict[int, str],
+) -> None:
+    session_map = {
+        item.session_profile_id: {
+            "person_profile_id": item.person_profile_id,
+            "anonymous_code": item.anonymous_code,
+            "customer_type": item.customer_type,
+            "total_visits": item.total_visits,
+            "matched_similarity": item.matched_similarity,
+        }
+        for item in identity_results
+    }
+
+    track_map = {}
+    for track_id, session_pid in track_to_session_profile.items():
+        global_identity = session_map.get(str(session_pid))
+        if global_identity is not None:
+            track_map[str(track_id)] = {
+                "session_profile_id": str(session_pid),
+                **global_identity,
+            }
+
+    video_result_publisher.publish(
+        processing_session_id,
+        {
+            "type": "global_identity_result",
+            "processing_session_id": processing_session_id,
+            "job_id": job_id,
+            "session_profile_mapping": session_map,
+            "track_identity_mapping": track_map,
+        },
+        None,
+    )
+
+
 async def process_temporary_video(
     file: UploadFile,
     db: Session | None = None,
@@ -389,7 +791,63 @@ async def process_temporary_video(
         merged_profiles: list = pipeline_result.get("merged_profiles", [])
         debug_person_records: list = pipeline_result.get("debug_person_records", [])
         video_fps: float = pipeline_result.get("video_fps", 1.0)
-        detected_customers = _build_detected_customers(pipeline_result, merged_profiles, db=db)
+
+        # P_000X chỉ là ID trong session hiện tại.
+        track_to_session_profile = _build_track_to_profile(
+            pipeline_result=pipeline_result,
+            merged_profiles=merged_profiles,
+            detected_customers=[],
+        )
+
+        identity_results: list[SessionIdentityResult] = []
+        track_to_person_profile_id: dict[int, int] = {}
+
+        if db is not None:
+            identity_results = (
+                global_customer_identity_service
+                .classify_pipeline_profiles(
+                    db=db,
+                    merged_profiles=merged_profiles,
+                    seen_at=datetime.now(),
+                    commit=False,
+                )
+            )
+
+            _upload_identity_avatars(
+                db=db,
+                identity_results=identity_results,
+            )
+            db.commit()
+
+            track_to_person_profile_id = (
+                _build_track_to_person_profile_id(
+                    track_to_session_profile,
+                    identity_results,
+                )
+            )
+
+            detected_customers = (
+                _build_global_detected_customers(
+                    db=db,
+                    identity_results=identity_results,
+                )
+            )
+
+            _publish_global_identity_result(
+                processing_session_id=processing_session_id,
+                job_id=processing_job.job_id,
+                identity_results=identity_results,
+                track_to_session_profile=track_to_session_profile,
+            )
+        else:
+            # Không có DB thì chỉ trả P_id tạm trong video,
+            # chưa thể phân loại Returning toàn cục.
+            detected_customers = _build_detected_customers(
+                pipeline_result,
+                merged_profiles,
+                db=None,
+            )
+
         total_customers = len(detected_customers)
         print(f"video_fps={video_fps}")
 
@@ -402,11 +860,8 @@ async def process_temporary_video(
         # Map track_id -> P_000X from realtime pipeline identity mapping.
         # This keeps ROI tracking aligned with realtime identity and prevents
         # raw tracker fragments from becoming person_profiles.
-        track_to_profile = _build_track_to_profile(
-            pipeline_result=pipeline_result,
-            merged_profiles=merged_profiles,
-            detected_customers=detected_customers,
-        )
+        # Mapping trong pipeline: raw track_id -> P_id tạm của session.
+        track_to_profile = track_to_session_profile
         profile_confidence = {
             p.get("profile_id", ""): float(p.get("best_face_confidence") or 0.0)
             for p in merged_profiles
@@ -469,11 +924,20 @@ async def process_temporary_video(
                     for track in movement_result.tracks:
                         track.anonymous_id = track_to_profile.get(track.track_id)
 
-                    print("[video_service] Bắt đầu lưu tracking vào DB...")
-                    _save_tracking_to_db(db, movement_result, track_to_profile, profile_confidence, merged_profiles=merged_profiles)
+                    print(
+                        "[video_service] Bắt đầu lưu VisitSession theo "
+                        "person_profile_id toàn cục..."
+                    )
+                    _save_global_visits_and_tracking(
+                        db=db,
+                        movement_result=movement_result,
+                        track_to_person_profile_id=(
+                            track_to_person_profile_id
+                        ),
+                    )
                     print(
                         f"[video_service] Tracking xong: "
-                        f"{movement_result.total_persons} mapped raw tracks, "
+                        f"{movement_result.total_persons} raw tracks, "
                         f"{len(movement_result.zone_visits)} zone visits"
                     )
                 except Exception as e:
@@ -493,10 +957,21 @@ async def process_temporary_video(
                 f"Session: {processing_session_id}; Job: {processing_job.job_id}"
             )
 
+        new_customers = sum(
+            1
+            for item in detected_customers
+            if item.get("customer_type") == "new"
+        )
+        returning_customers = sum(
+            1
+            for item in detected_customers
+            if item.get("customer_type") == "returning"
+        )
+
         return VideoAnalysisResponse(
             total_customers=total_customers,
-            new_customers=total_customers,
-            returning_customers=0,
+            new_customers=new_customers,
+            returning_customers=returning_customers,
             detected_customers=detected_customers,
             message=message,
         )

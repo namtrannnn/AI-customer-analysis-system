@@ -21,6 +21,10 @@ from app.models.visit_detection import VisitDetection
 from app.models.visit_sessions import VisitSession
 from app.models.zone_visit import ZoneVisit
 from app.services.ai.track_from_detection_service import process_detections_for_tracking
+from app.services.ai.global_customer_identity_service import (
+    global_customer_identity_service,
+    SessionIdentityResult,
+)
 from app.services.processing_job_manager import processing_job_manager
 from app.services.video_service_streaming_integrated import (
     streaming_video_pipeline_service,
@@ -159,7 +163,7 @@ class StreamingVideoService:
                 ai_job.job_id,
                 background=False,
                 output_face_dir=output_face_dir,
-                target_fps=6.0,
+                target_fps=10.0,
                 debug_video_path=None,
                 stream_frame_dir=None,
                 stream_emit_every_n_frames=1,
@@ -286,25 +290,22 @@ class StreamingVideoService:
             "bbox": bbox,
         })
 
-        # Realtime events are only a preview. Official PersonProfile,
-        # VisitSession, VisitDetection, and movement data are reconciled
-        # from final merged_profiles after the pipeline completes.
-        person = db.query(PersonProfile).filter(
-            PersonProfile.anonymous_code == str(anonymous_code)
-        ).first()
-        customer = self._get_customer_for_profile(db, person.id) if person else None
-
-        payload = {
+        # Realtime chỉ hiển thị P_id tạm của video. Không tra PersonProfile
+        # bằng P_000X vì P_000X reset ở mỗi video và có thể lấy nhầm avatar DB.
+        return {
             "frame_index": frame_index,
             "track_id": track_id,
             "anonymous_code": str(anonymous_code),
-            "confidence": confidence,
+            "session_profile_id": str(anonymous_code),
+            "confidence": max(0.0, min(1.0, confidence)),
             "bbox": bbox,
-            "customer_id": customer.id if customer else None,
-            "customer_name": customer.full_name if customer else None,
-            "customer_avatar": (customer.avatar_url if customer else None) or (person.face_image_url if person else None),
+            "customer_id": None,
+            "customer_name": None,
+            "customer_avatar": None,
+            "current_video_avatar": None,
+            "stored_profile_avatar": None,
+            "identified_customer_avatar": None,
         }
-        return payload
 
     def _finalize_job_data(
         self,
@@ -313,17 +314,50 @@ class StreamingVideoService:
         context: dict[str, Any],
         pipeline_result: dict[str, Any],
     ) -> None:
-        # BE-06: Đồng bộ dữ liệu cuối video dựa trên merged_profiles đã ổn định.
-        # Đây là bước tạo/cập nhật profile, visit session và detection chính thức.
+        """
+        Đồng bộ dữ liệu cuối video bằng GlobalCustomerIdentityService.
+
+        P_000X chỉ là session_profile_id. PersonProfile toàn cục được nhận
+        bằng embedding và có anonymous_code ANON_xxxxxxxx.
+        """
         merged_profiles = pipeline_result.get("merged_profiles") or []
-        profile_confidence = {
-            p.get("profile_id"): float(p.get("best_face_confidence") or 0.0)
-            for p in merged_profiles
-            if p.get("profile_id")
+        final_track_to_profile = self._build_final_track_to_profile(
+            pipeline_result,
+            merged_profiles,
+        )
+
+        print("\n[streaming_video_service] START GLOBAL IDENTITY")
+        identity_results: list[SessionIdentityResult] = (
+            global_customer_identity_service.classify_pipeline_profiles(
+                db=db,
+                merged_profiles=merged_profiles,
+                seen_at=datetime.now(),
+                commit=False,
+            )
+        )
+        print(
+            "[streaming_video_service] GLOBAL IDENTITY COMPLETED",
+            len(identity_results),
+        )
+
+        identity_by_session = {
+            str(result.session_profile_id): result
+            for result in identity_results
         }
-        final_track_to_profile = self._build_final_track_to_profile(pipeline_result, merged_profiles)
-        final_profile_ids = [profile.get("profile_id") for profile in merged_profiles if profile.get("profile_id")]
-        context["final_profile_ids"] = final_profile_ids
+        merged_by_session = {
+            str(profile.get("profile_id")): profile
+            for profile in merged_profiles
+            if profile.get("profile_id")
+        }
+
+        profile_confidence = {
+            session_pid: max(
+                0.0,
+                min(1.0, float(result.confidence or 0.0)),
+            )
+            for session_pid, result in identity_by_session.items()
+        }
+
         final_bounds = self._build_final_session_bounds(
             job=job,
             context=context,
@@ -331,57 +365,96 @@ class StreamingVideoService:
             track_to_profile=final_track_to_profile,
             profile_confidence=profile_confidence,
         )
+
+        context["final_profile_ids"] = list(identity_by_session.keys())
+        context["profiles"] = {}
+        context["identity_meta"] = {}
+        context["current_face_paths"] = {}
         pending_face_uploads: list[tuple[int, str, str]] = []
 
-        for profile in merged_profiles:
-            profile_id = profile.get("profile_id")
-            if not profile_id:
+        for session_pid, result in identity_by_session.items():
+            person = db.get(PersonProfile, int(result.person_profile_id))
+            if person is None:
                 continue
-            bounds = final_bounds.get(profile_id)
-            detected_at = bounds["entry_time"] if bounds else datetime.now()
-            person = self._get_or_create_person_profile(
-                db=db,
-                anonymous_code=profile_id,
-                confidence=profile_confidence.get(profile_id, 0.0),
-                detected_at=detected_at,
-            )
-            if not person.face_image_url and profile.get("best_face_image_path"):
-                pending_face_uploads.append((person.id, profile_id, profile["best_face_image_path"]))
 
-            context["profiles"][profile_id] = person.id
+            profile = merged_by_session.get(session_pid) or {}
+            bounds = final_bounds.get(session_pid)
+            detected_at = (
+                bounds["entry_time"]
+                if bounds
+                else datetime.now()
+            )
+
+            context["profiles"][session_pid] = int(person.id)
+            context["identity_meta"][session_pid] = {
+                "anonymous_code": str(person.anonymous_code),
+                "customer_type": str(result.customer_type),
+                "total_visits": int(person.total_visits or 0),
+                "matched_similarity": float(result.matched_similarity),
+            }
+
+            face_path = result.face_image_path or profile.get(
+                "best_face_image_path"
+            )
+            if face_path:
+                context["current_face_paths"][session_pid] = str(face_path)
+
+            if (
+                not person.face_image_url
+                and face_path
+                and os.path.exists(face_path)
+            ):
+                pending_face_uploads.append(
+                    (int(person.id), str(person.anonymous_code), str(face_path))
+                )
 
             if not bounds:
-                # Nếu pipeline không có record theo frame, vẫn tạo session tối thiểu.
                 bounds = {
                     "entry_time": detected_at,
                     "exit_time": detected_at,
-                    "confidence_sum": profile_confidence.get(profile_id, 0.0),
-                    "confidence_count": 1 if profile_confidence.get(profile_id, 0.0) else 0,
+                    "confidence_sum": float(result.confidence or 0.0),
+                    "confidence_count": 1 if result.confidence > 0 else 0,
                 }
 
-            session = self._get_or_create_job_session(db, job, context, person, bounds["entry_time"])
+            session = self._get_or_create_job_session(
+                db,
+                job,
+                context,
+                person,
+                bounds["entry_time"],
+            )
             entry_time = bounds["entry_time"]
             exit_time = bounds["exit_time"]
-            duration_seconds = max(0, int((exit_time - entry_time).total_seconds()))
             session.entry_time = entry_time
             session.exit_time = exit_time
-            session.duration_seconds = duration_seconds
+            session.duration_seconds = max(
+                0,
+                int((exit_time - entry_time).total_seconds()),
+            )
             context["session_bounds"][person.id] = bounds
 
-            person.first_seen_at = min(filter(None, [person.first_seen_at, entry_time]), default=entry_time)
-            person.last_seen_at = max(filter(None, [person.last_seen_at, exit_time]), default=exit_time)
-            person.total_visits = int(person.total_visits or 0) + 1
-            if bounds["confidence_count"]:
-                avg = bounds["confidence_sum"] / bounds["confidence_count"]
-                person.confidence_avg = avg if person.confidence_avg is None else (person.confidence_avg + avg) / 2
+        self._save_final_visit_detections(
+            db,
+            job,
+            context,
+            pipeline_result,
+            final_track_to_profile,
+        )
 
-        self._save_final_visit_detections(db, job, context, pipeline_result, final_track_to_profile)
         try:
-            # Movement/zone l là dữ liệu bổ sung; lỗi ở đây không làm hỏng kết quả chính.
             with db.begin_nested():
-                self._save_movement_and_zone_data(db, job, context, pipeline_result)
+                self._save_movement_and_zone_data(
+                    db,
+                    job,
+                    context,
+                    pipeline_result,
+                )
         except Exception:
-            logger.exception("Failed to save movement/zone data for processing job %s", job.job_id)
+            logger.exception(
+                "Failed to save movement/zone data for processing job %s",
+                job.job_id,
+            )
+
         db.commit()
         self._upload_profile_faces(db, pending_face_uploads)
 
@@ -714,49 +787,100 @@ class StreamingVideoService:
         pipeline_result: dict[str, Any],
         processing_time_ms: int,
     ) -> dict[str, Any]:
-        detected_persons = []
-        confidences = []
-        people_by_code = {
-            person.anonymous_code: person
-            for person in db.query(PersonProfile)
-            .filter(PersonProfile.anonymous_code.in_(context.get("final_profile_ids") or []))
-            .all()
-        }
+        import base64
 
-        for index, profile_id in enumerate(context.get("final_profile_ids") or [], start=1):
-            person = people_by_code.get(profile_id)
-            if not person:
+        detected_persons: list[dict[str, Any]] = []
+        confidences: list[float] = []
+        returning_count = 0
+
+        for index, session_pid in enumerate(
+            context.get("final_profile_ids") or [],
+            start=1,
+        ):
+            person_id = context.get("profiles", {}).get(session_pid)
+            if person_id is None:
                 continue
+
+            person = db.get(PersonProfile, int(person_id))
+            if person is None:
+                continue
+
+            meta = context.get("identity_meta", {}).get(session_pid, {})
+            customer_type = str(meta.get("customer_type") or "new")
+            if customer_type == "returning":
+                returning_count += 1
+
             customer = self._get_customer_for_profile(db, person.id)
-            confidence = float(person.confidence_avg or 0.0)
+            confidence = max(
+                0.0,
+                min(1.0, float(person.confidence_avg or 0.0)),
+            )
             confidences.append(confidence)
+
+            current_avatar = None
+            face_path = context.get("current_face_paths", {}).get(session_pid)
+            if face_path and os.path.exists(face_path):
+                try:
+                    with open(face_path, "rb") as image_file:
+                        encoded = base64.b64encode(
+                            image_file.read()
+                        ).decode("utf-8")
+                    current_avatar = (
+                        "data:image/jpeg;base64," + encoded
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to encode current video avatar for %s",
+                        session_pid,
+                    )
+
             detected_persons.append({
                 "id": index,
-                "anonymous_id": person.anonymous_code,
+                "session_profile_id": session_pid,
+                "person_profile_id": int(person.id),
+                "anonymous_id": str(person.anonymous_code),
+                "customer_type": customer_type,
+                "total_visits": int(person.total_visits or 0),
                 "person_type": "identified" if customer else "anonymous",
                 "confidence": confidence,
-                "first_detected_at": self._format_first_detected(job, person.id, context),
+                "first_detected_at": self._format_first_detected(
+                    job,
+                    person.id,
+                    context,
+                ),
                 "appearances": 1,
                 "zone": None,
-                "thumbnail_url": (customer.avatar_url if customer else None) or person.face_image_url,
+                # Màn hình kết quả ưu tiên ảnh của video hiện tại.
+                "thumbnail_url": current_avatar,
+                "current_video_avatar": current_avatar,
+                "stored_profile_avatar": person.face_image_url,
+                "identified_customer_avatar": (
+                    customer.avatar_url if customer else None
+                ),
                 "customer_id": customer.id if customer else None,
                 "customer_name": customer.full_name if customer else None,
             })
 
         total = len(detected_persons)
-        identified = len([p for p in detected_persons if p["person_type"] == "identified"])
-        avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-        duration = self._job_duration_seconds(context)
+        identified = sum(
+            1 for person in detected_persons
+            if person["person_type"] == "identified"
+        )
+        avg_confidence = (
+            sum(confidences) / len(confidences)
+            if confidences
+            else 0.0
+        )
 
         return {
             "video_id": int(time.time() * 1000),
             "video_name": job.file_name,
-            "duration": duration,
+            "duration": self._job_duration_seconds(context),
             "processed_at": datetime.now().isoformat(),
             "stats": {
                 "total_customers": total,
-                "new_customers": total - identified,
-                "returning_customers": identified,
+                "new_customers": total - returning_count,
+                "returning_customers": returning_count,
                 "identified_customers": identified,
                 "avg_confidence": round(avg_confidence, 3),
                 "processing_time_ms": processing_time_ms,
@@ -771,28 +895,10 @@ class StreamingVideoService:
         confidence: float,
         detected_at: datetime,
     ) -> PersonProfile:
-        person = db.query(PersonProfile).filter(PersonProfile.anonymous_code == anonymous_code).first()
-        if person:
-            if person.first_seen_at is None or detected_at < person.first_seen_at:
-                person.first_seen_at = detected_at
-            if person.last_seen_at is None or detected_at > person.last_seen_at:
-                person.last_seen_at = detected_at
-            if confidence:
-                person.confidence_avg = confidence if person.confidence_avg is None else (person.confidence_avg + confidence) / 2
-            db.flush()
-            return person
-
-        person = PersonProfile(
-            anonymous_code=anonymous_code,
-            person_type="anonymous",
-            first_seen_at=detected_at,
-            last_seen_at=detected_at,
-            total_visits=0,
-            confidence_avg=confidence,
+        raise RuntimeError(
+            "Legacy P_000X PersonProfile creation is disabled. "
+            "Use global_customer_identity_service instead."
         )
-        db.add(person)
-        db.flush()
-        return person
 
     def _get_or_create_job_session(
         self,
