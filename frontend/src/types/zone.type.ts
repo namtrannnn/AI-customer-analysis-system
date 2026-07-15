@@ -111,3 +111,28 @@ export const ZONE_COLORS = [
   "#ec4899", // pink
   "#84cc16", // lime
 ];
+
+
+// ─── Heatmap Types (PB07) ─────────────────────────────────────────────────────
+export interface ZoneHeatmapItem {
+  zone_id: number;
+  zone_name: string;
+  zone_type: ZoneType;
+  polygon: Point[];
+  color: string;
+  total_visits: number;
+  total_duration: number;
+  intensity: number; // 0..100%
+}
+
+export interface ZoneHeatmapResponse {
+  items: ZoneHeatmapItem[];
+  max_duration: number;
+  total_visits_sum: number;
+}
+
+export interface ZoneHeatmapFilters {
+  start_date?: string;
+  end_date?: string;
+}
+
