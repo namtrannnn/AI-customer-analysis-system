@@ -11,6 +11,8 @@ import type {
   MovementTrack,
   ZoneVisit,
   TrackFilterParams,
+  ZoneHeatmapResponse,
+  ZoneHeatmapFilters,
 } from "@/types/zone.type";
 
 // ─── Zone CRUD ────────────────────────────────────────────────────────────────
@@ -81,3 +83,15 @@ export async function getZoneVisits(zoneId?: number): Promise<ZoneVisit[]> {
   if (zoneId) return http.get<ZoneVisit[]>(`/zones/${zoneId}/visits/`);
   return [];
 }
+
+
+// ─── Heatmap API (PB07) ────────────────────────────────────────────────────────
+export async function getZoneHeatmap(
+  filters: ZoneHeatmapFilters
+): Promise<ZoneHeatmapResponse> {
+  const params: Record<string, any> = {};
+  if (filters.start_date) params.start_date = filters.start_date;
+  if (filters.end_date) params.end_date = filters.end_date;
+  return http.get<ZoneHeatmapResponse>("/zones/heatmap", { params });
+}
+
