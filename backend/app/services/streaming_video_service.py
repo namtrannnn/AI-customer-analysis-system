@@ -20,6 +20,7 @@ from app.models.store_zone import StoreZone
 from app.models.visit_detection import VisitDetection
 from app.models.visit_sessions import VisitSession
 from app.models.zone_visit import ZoneVisit
+from app.services.ai.roi_service import roi_service
 from app.services.ai.track_from_detection_service import process_detections_for_tracking
 from app.services.ai.global_customer_identity_service import (
     global_customer_identity_service,
@@ -691,10 +692,8 @@ class StreamingVideoService:
         )
 
         profile_to_person = {
-            person.anonymous_code: person
-            for person in db.query(PersonProfile)
-            .filter(PersonProfile.anonymous_code.in_(set(track_to_profile.values())))
-            .all()
+            session_profile_id: db.get(PersonProfile, int(person_id))
+            for session_profile_id, person_id in context.get("profiles", {}).items()
         }
 
         for track in movement_result.tracks:
@@ -743,6 +742,18 @@ class StreamingVideoService:
             anonymous_code: db.query(PersonProfile).filter(PersonProfile.id == person_id).first()
             for anonymous_code, person_id in context.get("profiles", {}).items()
         }
+        zones = [
+            {
+                "id": zone.id,
+                "zone_name": zone.zone_name,
+                "zone_type": zone.zone_type,
+                "polygon": zone.polygon or [],
+                "color": zone.color,
+            }
+            for zone in db.query(StoreZone).all()
+            if zone.polygon and len(zone.polygon) >= 3
+        ]
+        zone_states: dict[tuple[int, int], dict[str, Any]] = {}
 
         frame_width = float(context.get("frame_width") or 0)
         frame_height = float(context.get("frame_height") or 0)
@@ -770,13 +781,53 @@ class StreamingVideoService:
                 else:
                     continue
 
+            position_x = max(0.0, min(1.0, position_x))
+            position_y = max(0.0, min(1.0, position_y))
+            tracked_at = self._detected_at(job, int(record.get("frame_index") or 0), context)
+            zone_id = roi_service.find_zone_for_point(position_x, position_y, zones).zone_id if zones else None
+
             db.add(MovementTrack(
                 visit_session_id=session_id,
                 person_profile_id=person.id,
-                zone_id=None,
-                position_x=max(0.0, min(1.0, position_x)),
-                position_y=max(0.0, min(1.0, position_y)),
-                tracked_at=self._detected_at(job, int(record.get("frame_index") or 0), context),
+                zone_id=zone_id,
+                position_x=position_x,
+                position_y=position_y,
+                tracked_at=tracked_at,
+            ))
+
+            state_key = (person.id, session_id)
+            state = zone_states.setdefault(state_key, {
+                "zone_id": None,
+                "enter_time": None,
+                "last_time": tracked_at,
+            })
+            if zone_id != state["zone_id"]:
+                if state["zone_id"] is not None and state["enter_time"] is not None:
+                    leave_time = state["last_time"] or tracked_at
+                    db.add(ZoneVisit(
+                        visit_session_id=session_id,
+                        person_profile_id=person.id,
+                        zone_id=state["zone_id"],
+                        enter_time=state["enter_time"],
+                        leave_time=leave_time,
+                        duration_seconds=max(0, int((leave_time - state["enter_time"]).total_seconds())),
+                    ))
+                state["zone_id"] = zone_id
+                state["enter_time"] = tracked_at if zone_id is not None else None
+            state["last_time"] = tracked_at
+
+        for person_id, session_id in zone_states.keys():
+            state = zone_states[(person_id, session_id)]
+            if state["zone_id"] is None or state["enter_time"] is None:
+                continue
+            leave_time = state["last_time"] or state["enter_time"]
+            db.add(ZoneVisit(
+                visit_session_id=session_id,
+                person_profile_id=person_id,
+                zone_id=state["zone_id"],
+                enter_time=state["enter_time"],
+                leave_time=leave_time,
+                duration_seconds=max(0, int((leave_time - state["enter_time"]).total_seconds())),
             ))
 
     def _build_complete_result(
