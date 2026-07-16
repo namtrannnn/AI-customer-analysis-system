@@ -5,8 +5,12 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.database.session import get_db
+from app.database.session import SessionLocal 
+
 from app.utils.response import error_response, success_response
 from app.routers import customer_router
 from app.routers import user_router
@@ -17,13 +21,54 @@ from app.routers import video_router
 from app.routers import zone_router
 from app.routers import track_router
 from app.routers import segment_router
+from app.routers import statistic_router
 from app.routers import person_profile_router
 from app.routers import duration_router
 from app.routers import daily_statistics_router
 
+from app.services.statistics_service import DailyStatisticsService
+
+# CẤU HÌNH CRONJOB TỔNG HỢP DỮ LIỆU CUỐI NGÀY
+def run_daily_statistics_job():
+    print("Bắt đầu chạy Cronjob tổng hợp dữ liệu thống kê cuối ngày...")
+    # Tạo một database session độc lập (không phụ thuộc vào request HTTP)
+    db: Session = SessionLocal()
+    try:
+        service = DailyStatisticsService(db)
+        # Hàm aggregate_daily_stats mặc định sẽ lấy ngày hôm qua (yesterday)
+        service.aggregate_daily_stats()
+        print("Cronjob tổng hợp dữ liệu hoàn tất thành công.")
+    except Exception as e:
+        print(f"Lỗi khi chạy Cronjob tổng hợp dữ liệu: {e}")
+    finally:
+        db.close()
+
+# Quản lý vòng đời của ứng dụng FastAPI
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Khởi tạo Scheduler bất đồng bộ
+    scheduler = AsyncIOScheduler()
+    
+    # Thiết lập chạy vào lúc 00:01 mỗi đêm
+    scheduler.add_job(run_daily_statistics_job, 'cron', hour=0, minute=1)
+    
+    # (Tùy chọn lúc test) Nếu bạn muốn test xem code có chạy không, hãy mở comment dòng dưới:
+    scheduler.add_job(run_daily_statistics_job, 'interval', minutes=1)
+    
+    scheduler.start()
+    print("APScheduler đã được khởi động.")
+    
+    yield # Trả quyền điều khiển lại cho FastAPI
+    
+    # Tắt Scheduler khi server FastAPI bị tắt
+    scheduler.shutdown()
+    print("APScheduler đã tắt.")
+
+# KHỞI TẠO APP FASTAPI KÈM LIFESPAN
 app = FastAPI(
     title="AI Customer Analysis API",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 origins = [
@@ -50,6 +95,7 @@ app.include_router(video_router.router)
 app.include_router(zone_router.router)
 app.include_router(track_router.router)
 app.include_router(segment_router.router)
+app.include_router(statistic_router.router)
 app.include_router(duration_router.router)
 app.include_router(daily_statistics_router.router)
 
