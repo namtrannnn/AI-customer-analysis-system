@@ -6,7 +6,14 @@ from datetime import date, timedelta
 
 from app.database.session import get_db
 from app.models.daily_statistic import DailyStatistic
-from app.schemas.daily_statistic import OverviewStatsResponse, TrendChartResponse, ChartDataPoint
+from app.models.store_zone import StoreZone
+from app.models.zone_visit import ZoneVisit
+from app.schemas.daily_statistic import (
+    OverviewStatsResponse,
+    TrendChartResponse,
+    ChartDataPoint,
+    ZoneVisitStatResponse,
+)
 from app.schemas.response_schema import StandardResponse
 from app.core.dependencies import get_admin_user
 from app.utils.response import success_response
@@ -93,3 +100,40 @@ def get_trend_chart(
 
     trend = TrendChartResponse(group_by=group_by, data=data_points)
     return success_response(data=trend, message="Lay du lieu xu huong thanh cong")
+
+
+@router.get("/zone-visits", response_model=StandardResponse[List[ZoneVisitStatResponse]])
+def get_zone_visit_statistics(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+    admin_user=Depends(get_admin_user),
+):
+    if not end_date:
+        end_date = date.today()
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+
+    rows = (
+        db.query(
+            StoreZone.zone_name.label("zone"),
+            StoreZone.color.label("color"),
+            func.count(ZoneVisit.id).label("visits"),
+        )
+        .join(ZoneVisit, ZoneVisit.zone_id == StoreZone.id)
+        .filter(func.date(ZoneVisit.enter_time) >= start_date)
+        .filter(func.date(ZoneVisit.enter_time) <= end_date)
+        .group_by(StoreZone.id, StoreZone.zone_name, StoreZone.color)
+        .order_by(func.count(ZoneVisit.id).desc())
+        .all()
+    )
+
+    data = [
+        ZoneVisitStatResponse(
+            zone=row.zone,
+            visits=int(row.visits or 0),
+            color=row.color or "#6366f1",
+        )
+        for row in rows
+    ]
+    return success_response(data=data, message="Lay thong ke luot tham theo vung thanh cong")

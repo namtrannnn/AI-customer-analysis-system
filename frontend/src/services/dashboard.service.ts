@@ -19,6 +19,12 @@ export interface DashboardTrendResponse {
   data: DashboardTrendPoint[];
 }
 
+export interface DashboardZoneVisitStat {
+  zone: string;
+  visits: number;
+  color: string;
+}
+
 export interface DashboardFilters {
   start_date?: string;
   end_date?: string;
@@ -45,6 +51,14 @@ export async function getDashboardTrend(
   filters: DashboardFilters,
 ): Promise<DashboardTrendResponse> {
   return http.get<DashboardTrendResponse>("/statistics/trend", {
+    params: buildParams(filters),
+  });
+}
+
+export async function getDashboardZoneVisits(
+  filters: DashboardFilters,
+): Promise<DashboardZoneVisitStat[]> {
+  return http.get<DashboardZoneVisitStat[]>("/statistics/zone-visits", {
     params: buildParams(filters),
   });
 }

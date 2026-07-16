@@ -19,3 +19,8 @@ class ChartDataPoint(BaseModel):
 class TrendChartResponse(BaseModel):
     group_by: str
     data: List[ChartDataPoint]
+
+class ZoneVisitStatResponse(BaseModel):
+    zone: str
+    visits: int
+    color: str

@@ -12,7 +12,6 @@ import ZoneVisitChart from "@/components/dashboard/ZoneVisitChart";
 import AvgDurationChart from "@/components/dashboard/AvgDurationChart";
 import {
   MOCK_DATA,
-  MOCK_ZONE_VISITS,
   computeStats,
   getPrevPoints,
   type DashboardStats,
@@ -22,9 +21,11 @@ import {
 import {
   getDashboardOverview,
   getDashboardTrend,
+  getDashboardZoneVisits,
   type DashboardFilters,
   type DashboardOverview,
   type DashboardTrendResponse,
+  type DashboardZoneVisitStat,
 } from "@/services/dashboard.service";
 
 // ─── Date range tabs ───────────────────────────────────────────────────────────
@@ -134,6 +135,7 @@ export default function DashboardPage() {
   const [chartMode, setChartMode] = useState<"line" | "bar">("line");
   const [apiPoints, setApiPoints] = useState<DailyStatPoint[] | null>(null);
   const [apiStats, setApiStats] = useState<DashboardStats | null>(null);
+  const [zoneVisits, setZoneVisits] = useState<DashboardZoneVisitStat[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingFallback, setUsingFallback] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -147,12 +149,15 @@ export default function DashboardPage() {
       const filters = getFiltersForRange(range);
 
       try {
-        const [overview, trend] = await Promise.all([
+        const [overview, trend, zoneVisitData] = await Promise.all([
           getDashboardOverview(filters),
           getDashboardTrend(filters),
+          getDashboardZoneVisits(filters),
         ]);
         const mappedPoints = mapTrendToPoints(trend, overview);
         if (cancelled) return;
+
+        setZoneVisits(zoneVisitData);
 
         if (mappedPoints.length === 0) {
           setApiPoints(null);
@@ -169,6 +174,7 @@ export default function DashboardPage() {
         console.error("Không thể tải dashboard từ API:", err);
         setApiPoints(null);
         setApiStats(null);
+        setZoneVisits([]);
         setUsingFallback(true);
         setError("Không thể tải dữ liệu dashboard từ API, đang hiển thị dữ liệu mẫu.");
       } finally {
@@ -329,7 +335,16 @@ export default function DashboardPage() {
               Phân bổ khu vực trong kỳ
             </p>
           </div>
-          <ZoneVisitChart data={MOCK_ZONE_VISITS} />
+          {zoneVisits.length > 0 ? (
+            <ZoneVisitChart data={zoneVisits} />
+          ) : (
+            <div
+              className="flex h-[220px] items-center justify-center rounded-xl border border-dashed text-center text-xs font-medium"
+              style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+            >
+              Chưa có dữ liệu lượt thăm theo vùng
+            </div>
+          )}
         </Card>
       </div>
 
