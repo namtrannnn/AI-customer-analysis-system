@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Users, UserPlus, RefreshCw, Clock,
   BarChart2, LineChart, TrendingUp, TrendingDown,
@@ -15,8 +15,17 @@ import {
   MOCK_ZONE_VISITS,
   computeStats,
   getPrevPoints,
+  type DashboardStats,
+  type DailyStatPoint,
   type RangeKey,
 } from "@/components/dashboard/DashboardMockData";
+import {
+  getDashboardOverview,
+  getDashboardTrend,
+  type DashboardFilters,
+  type DashboardOverview,
+  type DashboardTrendResponse,
+} from "@/services/dashboard.service";
 
 // ─── Date range tabs ───────────────────────────────────────────────────────────
 const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
@@ -24,6 +33,51 @@ const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
   { key: "30d", label: "30 ngày" },
   { key: "3m",  label: "3 tháng" },
 ];
+
+function toISODate(date: Date) {
+  return date.toISOString().split("T")[0];
+}
+
+function getFiltersForRange(range: RangeKey): DashboardFilters {
+  const end = new Date();
+  const start = new Date(end);
+  if (range === "7d") start.setDate(end.getDate() - 7);
+  if (range === "30d") start.setDate(end.getDate() - 30);
+  if (range === "3m") start.setDate(end.getDate() - 90);
+
+  return {
+    start_date: toISODate(start),
+    end_date: toISODate(end),
+    group_by: range === "3m" ? "month" : "day",
+  };
+}
+
+function mapTrendToPoints(
+  trend: DashboardTrendResponse,
+  overview: DashboardOverview,
+): DailyStatPoint[] {
+  const avgDurationMinutes = Math.round((overview.avg_duration_seconds || 0) / 60);
+  return trend.data.map((point) => ({
+    date: point.label,
+    total: point.total_visits,
+    new_customers: point.new_visitors,
+    returning: point.returning_visitors,
+    avg_duration: avgDurationMinutes,
+  }));
+}
+
+function mapOverviewToStats(overview: DashboardOverview): DashboardStats {
+  return {
+    total_customers: overview.total_visits,
+    new_customers: overview.new_visitors,
+    returning_customers: overview.returning_visitors,
+    avg_duration_minutes: Math.round((overview.avg_duration_seconds || 0) / 60),
+    total_change: 0,
+    new_change: 0,
+    returning_change: 0,
+    duration_change: 0,
+  };
+}
 
 // ─── Trend badge ───────────────────────────────────────────────────────────────
 function TrendBadge({ value }: { value: number }) {
@@ -78,10 +132,60 @@ function MockBadge() {
 export default function DashboardPage() {
   const [range, setRange]     = useState<RangeKey>("7d");
   const [chartMode, setChartMode] = useState<"line" | "bar">("line");
+  const [apiPoints, setApiPoints] = useState<DailyStatPoint[] | null>(null);
+  const [apiStats, setApiStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [usingFallback, setUsingFallback] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const points     = MOCK_DATA[range];
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadDashboard() {
+      setLoading(true);
+      setError(null);
+      const filters = getFiltersForRange(range);
+
+      try {
+        const [overview, trend] = await Promise.all([
+          getDashboardOverview(filters),
+          getDashboardTrend(filters),
+        ]);
+        const mappedPoints = mapTrendToPoints(trend, overview);
+        if (cancelled) return;
+
+        if (mappedPoints.length === 0) {
+          setApiPoints(null);
+          setApiStats(null);
+          setUsingFallback(true);
+          return;
+        }
+
+        setApiPoints(mappedPoints);
+        setApiStats(mapOverviewToStats(overview));
+        setUsingFallback(false);
+      } catch (err) {
+        if (cancelled) return;
+        console.error("Không thể tải dashboard từ API:", err);
+        setApiPoints(null);
+        setApiStats(null);
+        setUsingFallback(true);
+        setError("Không thể tải dữ liệu dashboard từ API, đang hiển thị dữ liệu mẫu.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadDashboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
+
+  const points     = apiPoints ?? MOCK_DATA[range];
   const prevPoints = useMemo(() => getPrevPoints(points), [points]);
-  const stats      = useMemo(() => computeStats(points, prevPoints), [points, prevPoints]);
+  const fallbackStats = useMemo(() => computeStats(points, prevPoints), [points, prevPoints]);
+  const stats      = apiStats ?? fallbackStats;
 
   return (
     <div className="space-y-6">
@@ -97,7 +201,12 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <MockBadge />
+          {loading && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-600 dark:bg-sky-900/30 dark:text-sky-400">
+              Đang tải
+            </span>
+          )}
+          {usingFallback && <MockBadge />}
           {/* Date range picker */}
           <div
             className="flex items-center gap-1 rounded-xl p-1"
@@ -120,6 +229,12 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-700 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-300">
+          {error}
+        </div>
+      )}
 
       {/* ── Stat cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

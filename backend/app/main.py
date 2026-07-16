@@ -53,7 +53,7 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(run_daily_statistics_job, 'cron', hour=0, minute=1)
     
     # (Tùy chọn lúc test) Nếu bạn muốn test xem code có chạy không, hãy mở comment dòng dưới:
-    scheduler.add_job(run_daily_statistics_job, 'interval', minutes=1)
+    # scheduler.add_job(run_daily_statistics_job, 'interval', minutes=1)
     
     scheduler.start()
     print("APScheduler đã được khởi động.")
