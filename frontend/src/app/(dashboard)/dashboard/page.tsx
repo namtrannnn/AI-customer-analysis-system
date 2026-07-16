@@ -1,276 +1,336 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useState, useMemo } from "react";
 import {
-  Users,
-  UserPlus,
-  RefreshCw,
-  DollarSign,
-  Camera,
-  Clock,
-  TrendingUp,
+  Users, UserPlus, RefreshCw, Clock,
+  BarChart2, LineChart, TrendingUp, TrendingDown,
+  CalendarDays, Info,
 } from "lucide-react";
 import StatCard from "@/components/common/StatCard";
-import CustomerSummaryStats from "@/components/common/CustomerSummaryStats";
-import { getCustomers } from "@/services/customer.service";
-import { formatCurrency } from "@/utils/formatCurrency";
-import { timeAgo } from "@/utils/formatDate";
-import type { Customer } from "@/types/customer.type";
+import TrendChart from "@/components/dashboard/TrendChart";
+import ZoneVisitChart from "@/components/dashboard/ZoneVisitChart";
+import AvgDurationChart from "@/components/dashboard/AvgDurationChart";
+import {
+  MOCK_DATA,
+  MOCK_ZONE_VISITS,
+  computeStats,
+  getPrevPoints,
+  type RangeKey,
+} from "@/components/dashboard/DashboardMockData";
 
-// ─── Activity item ─────────────────────────────────────────────────────────────
-function ActivityItem({
-  color,
-  title,
-  sub,
-  time,
+// ─── Date range tabs ───────────────────────────────────────────────────────────
+const RANGE_OPTIONS: { key: RangeKey; label: string }[] = [
+  { key: "7d",  label: "7 ngày" },
+  { key: "30d", label: "30 ngày" },
+  { key: "3m",  label: "3 tháng" },
+];
+
+// ─── Trend badge ───────────────────────────────────────────────────────────────
+function TrendBadge({ value }: { value: number }) {
+  const up = value >= 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        up
+          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+          : "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+      }`}
+    >
+      {up ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+      {up ? "+" : ""}{value}%
+    </span>
+  );
+}
+
+// ─── Section wrapper ───────────────────────────────────────────────────────────
+function Card({
+  children,
+  className = "",
 }: {
-  color: string;
-  title: string;
-  sub: string;
-  time: string;
+  children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="flex items-start gap-3 py-3">
-      <div className={`mt-1 h-2 w-2 shrink-0 rounded-full ${color}`} />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-          {title}
-        </p>
-        <p className="text-xs" style={{ color: "var(--text-muted)" }}>{sub}</p>
-      </div>
-      <span className="shrink-0 text-xs" style={{ color: "var(--text-muted)" }}>
-        {time}
-      </span>
+    <div
+      className={`rounded-2xl p-5 ${className}`}
+      style={{
+        background: "var(--bg-surface)",
+        border: "1px solid var(--border)",
+        boxShadow: "var(--shadow-sm)",
+      }}
+    >
+      {children}
     </div>
   );
 }
 
+// ─── Mock badge ───────────────────────────────────────────────────────────────
+function MockBadge() {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+      <Info className="h-3 w-3" />
+      Mock data
+    </span>
+  );
+}
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
 export default function DashboardPage() {
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [range, setRange]     = useState<RangeKey>("7d");
+  const [chartMode, setChartMode] = useState<"line" | "bar">("line");
 
-  useEffect(() => {
-    getCustomers({ page: 1, limit: 10 })
-      .then((res) => {
-        setCustomers(res.data);
-        setTotal(res.total);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  // Compute stats từ dữ liệu thật
-  const activeCount = customers.filter((c) => c.status === "active").length;
-  const vipCount = customers.filter((c) => c.note?.includes("VIP")).length;
-  const returningCount = customers.filter((c) => (c.total_visits ?? 0) > 1).length;
-  const newCount = customers.filter((c) => (c.total_visits ?? 0) <= 1).length;
-  const totalRevenue = customers.reduce((s, c) => s + (Number(c.total_spent) || 0), 0);
-
-  // Recent visits — khách ghé gần nhất
-  const recentVisits = [...customers]
-    .filter((c) => c.last_visited_at)
-    .sort((a, b) =>
-      new Date(b.last_visited_at!).getTime() - new Date(a.last_visited_at!).getTime()
-    )
-    .slice(0, 5);
+  const points     = MOCK_DATA[range];
+  const prevPoints = useMemo(() => getPrevPoints(points), [points]);
+  const stats      = useMemo(() => computeStats(points, prevPoints), [points, prevPoints]);
 
   return (
     <div className="space-y-6">
-      {/* ── Page title ── */}
-      <div>
-        <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
-          Tổng quan
-        </h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
-          Theo dõi hoạt động hệ thống và chỉ số khách hàng hôm nay.
-        </p>
-      </div>
-
-      {/* ── FE-10: Customer Summary Stats (tái dụng component) ── */}
-      {!loading && (
-        <CustomerSummaryStats
-          stats={{
-            total_customers: total,
-            new_customers: newCount,
-            returning_customers: returningCount,
-          }}
-          extraCard={
-            <StatCard
-              label="Tổng doanh thu"
-              value={totalRevenue > 0 ? formatCurrency(totalRevenue) : "—"}
-              sub={`${vipCount} khách VIP`}
-              gradient="from-amber-500 to-orange-500"
-              icon={<DollarSign className="h-5 w-5 text-white" />}
-            />
-          }
-        />
-      )}
-
-      {loading && (
-        <div className="grid gap-3 sm:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <div
-              key={i}
-              className="h-24 animate-pulse rounded-2xl"
-              style={{ background: "var(--bg-surface-2)" }}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* ── Content grid ── */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        {/* ─ Recent visits (2/3) ─ */}
-        <div
-          className="rounded-2xl p-6 lg:col-span-2"
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              Khách hàng gần đây
-            </h2>
-            <Link href="/customers" className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400">
-              Xem tất cả →
-            </Link>
-          </div>
-
-          {loading ? (
-            <div className="space-y-3">
-              {[...Array(5)].map((_, i) => (
-                <div key={i} className="h-12 animate-pulse rounded-xl" style={{ background: "var(--bg-surface-2)" }} />
-              ))}
-            </div>
-          ) : recentVisits.length === 0 ? (
-            <p className="py-8 text-center text-sm" style={{ color: "var(--text-muted)" }}>
-              Chưa có dữ liệu khách hàng
-            </p>
-          ) : (
-            <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-              {recentVisits.map((c) => (
-                <div key={c.id} className="flex items-center justify-between py-3">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-xs font-bold text-slate-600 dark:from-slate-700 dark:to-slate-600 dark:text-slate-300">
-                      {(c.full_name || "K").charAt(0)}
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-                        {c.full_name || "Khách ẩn danh"}
-                      </p>
-                      <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        {c.customer_code}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {c.note?.includes("VIP") && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                        VIP
-                      </span>
-                    )}
-                    <div className="text-right">
-                      <p className="text-xs font-medium" style={{ color: "var(--text-secondary)" }}>
-                        {timeAgo(c.last_visited_at)}
-                      </p>
-                      <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>
-                        {c.total_visits} lượt ghé
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* ── Header ── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold" style={{ color: "var(--text-primary)" }}>
+            Dashboard tổng hợp
+          </h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-muted)" }}>
+            Theo dõi chỉ số khách hàng và xu hướng hoạt động cửa hàng.
+          </p>
         </div>
 
-        {/* ─ Activity feed (1/3) ─ */}
-        <div
-          className="rounded-2xl p-6"
-          style={{
-            background: "var(--bg-surface)",
-            border: "1px solid var(--border)",
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-              Hoạt động
-            </h2>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-400">
-              Hôm nay
-            </span>
-          </div>
-
-          <div className="divide-y" style={{ borderColor: "var(--border)" }}>
-            <ActivityItem color="bg-green-500"  title="Hệ thống hoạt động bình thường" sub="AI pipeline sẵn sàng" time="Vừa xong" />
-            <ActivityItem color="bg-blue-500"   title={`${total} khách đã được phân tích`} sub="Từ dữ liệu hệ thống" time="Hôm nay" />
-            <ActivityItem color="bg-amber-500"  title={`${vipCount} khách VIP`} sub="Tỷ lệ cao nhất tuần" time="Tuần này" />
-            <ActivityItem color="bg-violet-500" title="Video AI đang chạy" sub="Camera pipeline active" time="Liên tục" />
-            <ActivityItem color="bg-teal-500"   title="Zones đang theo dõi" sub="ROI tracking bật" time="Liên tục" />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Bottom metric cards ── */}
-      <div className="grid gap-5 sm:grid-cols-3">
-        {/* Camera */}
-        <div className="rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 p-5 text-white shadow-lg shadow-blue-500/20">
-          <div className="flex items-center gap-2 mb-2">
-            <Camera className="h-4 w-4 text-blue-200" />
-            <p className="text-xs font-medium text-blue-200">Camera hoạt động</p>
-          </div>
-          <p className="text-3xl font-bold">4</p>
-          <p className="mt-1 text-xs text-blue-300">/ 6 camera tổng</p>
-          <div className="mt-3 flex gap-1">
-            {[1,1,1,1,0,0].map((on, i) => (
-              <div key={i} className={`h-1.5 w-1.5 rounded-full ${on ? "bg-white" : "bg-blue-400/40"}`} />
+        <div className="flex items-center gap-2">
+          <MockBadge />
+          {/* Date range picker */}
+          <div
+            className="flex items-center gap-1 rounded-xl p-1"
+            style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+          >
+            <CalendarDays className="ml-1.5 h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+            {RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                onClick={() => setRange(opt.key)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                  range === opt.key
+                    ? "bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                }`}
+              >
+                {opt.label}
+              </button>
             ))}
           </div>
         </div>
+      </div>
 
-        {/* Avg time */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <Clock className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
-            <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Thời gian ở lại TB</p>
-          </div>
-          <p className="text-3xl font-bold" style={{ color: "var(--text-primary)" }}>42 phút</p>
-          <div className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-600 dark:bg-green-900/30 dark:text-green-400">
-            <svg className="h-3 w-3" viewBox="0 0 12 12" fill="currentColor"><path d="M6 2l4 6H2l4-6z" /></svg>
-            +5 phút vs tuần trước
-          </div>
-        </div>
+      {/* ── Stat cards ── */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Tổng lượt khách"
+          value={stats.total_customers.toLocaleString()}
+          sub={`So với kỳ trước`}
+          gradient="from-indigo-500 to-violet-600"
+          icon={<Users className="h-5 w-5 text-white" />}
+          trend={{ value: `${stats.total_change > 0 ? "+" : ""}${stats.total_change}%`, up: stats.total_change >= 0 }}
+        />
+        <StatCard
+          label="Khách mới"
+          value={stats.new_customers.toLocaleString()}
+          sub="Lần đầu ghé thăm"
+          gradient="from-emerald-500 to-teal-500"
+          icon={<UserPlus className="h-5 w-5 text-white" />}
+          trend={{ value: `${stats.new_change > 0 ? "+" : ""}${stats.new_change}%`, up: stats.new_change >= 0 }}
+        />
+        <StatCard
+          label="Khách quay lại"
+          value={stats.returning_customers.toLocaleString()}
+          sub="Đã từng ghé trước đó"
+          gradient="from-amber-500 to-orange-500"
+          icon={<RefreshCw className="h-5 w-5 text-white" />}
+          trend={{ value: `${stats.returning_change > 0 ? "+" : ""}${stats.returning_change}%`, up: stats.returning_change >= 0 }}
+        />
+        <StatCard
+          label="Thời gian ở lại TB"
+          value={`${stats.avg_duration_minutes} phút`}
+          sub="Trung bình mỗi lượt"
+          gradient="from-sky-500 to-cyan-500"
+          icon={<Clock className="h-5 w-5 text-white" />}
+          trend={{ value: `${stats.duration_change > 0 ? "+" : ""}${stats.duration_change}%`, up: stats.duration_change >= 0 }}
+        />
+      </div>
 
-        {/* Conversion */}
-        <div
-          className="rounded-2xl p-5"
-          style={{ background: "var(--bg-surface)", border: "1px solid var(--border)", boxShadow: "var(--shadow-sm)" }}
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4" style={{ color: "var(--text-muted)" }} />
-            <p className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>Tỷ lệ chuyển đổi</p>
-          </div>
-          <p className="text-3xl font-bold" style={{ color: "var(--text-primary)" }}>
-            {total > 0 ? `${Math.round((activeCount / total) * 100)}%` : "—"}
-          </p>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full" style={{ background: "var(--bg-surface-3)" }}>
+      {/* ── Main chart + Zone pie ── */}
+      <div className="grid gap-5 lg:grid-cols-[1fr_280px]">
+        {/* Trend chart */}
+        <Card>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Xu hướng khách hàng
+              </h2>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                {range === "7d" ? "7 ngày gần nhất" : range === "30d" ? "30 ngày gần nhất" : "3 tháng gần nhất"}
+              </p>
+            </div>
+
+            {/* Chart mode toggle */}
             <div
-              className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all"
-              style={{ width: total > 0 ? `${(activeCount / total) * 100}%` : "0%" }}
-            />
+              className="flex items-center rounded-lg p-0.5"
+              style={{ background: "var(--bg-surface-2)" }}
+            >
+              <button
+                onClick={() => setChartMode("line")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  chartMode === "line"
+                    ? "bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                }`}
+              >
+                <LineChart className="h-3.5 w-3.5" />
+                Line
+              </button>
+              <button
+                onClick={() => setChartMode("bar")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                  chartMode === "bar"
+                    ? "bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100"
+                    : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                }`}
+              >
+                <BarChart2 className="h-3.5 w-3.5" />
+                Bar
+              </button>
+            </div>
           </div>
-          <p className="mt-1 text-xs" style={{ color: "var(--text-muted)" }}>
-            {activeCount} / {total} khách hoạt động
-          </p>
-        </div>
+
+          <TrendChart data={points} mode={chartMode} />
+        </Card>
+
+        {/* Zone visits pie */}
+        <Card>
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Lượt thăm theo vùng
+            </h2>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              Phân bổ khu vực trong kỳ
+            </p>
+          </div>
+          <ZoneVisitChart data={MOCK_ZONE_VISITS} />
+        </Card>
+      </div>
+
+      {/* ── Avg duration + summary ── */}
+      <div className="grid gap-5 lg:grid-cols-2">
+        {/* Avg duration area chart */}
+        <Card>
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                Thời gian ở lại trung bình
+              </h2>
+              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                Đơn vị: phút / ngày
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-2xl font-black" style={{ color: "var(--text-primary)" }}>
+              {stats.avg_duration_minutes}
+              <span className="text-sm font-normal" style={{ color: "var(--text-muted)" }}>phút</span>
+              <TrendBadge value={stats.duration_change} />
+            </div>
+          </div>
+          <AvgDurationChart data={points} />
+        </Card>
+
+        {/* Summary table */}
+        <Card>
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+              Tóm tắt kỳ này
+            </h2>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+              So sánh với kỳ trước cùng độ dài
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            {[
+              {
+                label: "Tổng lượt khách",
+                curr: stats.total_customers,
+                prev: prevPoints.reduce((s, p) => s + p.total, 0),
+                change: stats.total_change,
+                color: "text-indigo-500",
+              },
+              {
+                label: "Khách mới",
+                curr: stats.new_customers,
+                prev: prevPoints.reduce((s, p) => s + p.new_customers, 0),
+                change: stats.new_change,
+                color: "text-emerald-500",
+              },
+              {
+                label: "Khách quay lại",
+                curr: stats.returning_customers,
+                prev: prevPoints.reduce((s, p) => s + p.returning, 0),
+                change: stats.returning_change,
+                color: "text-amber-500",
+              },
+              {
+                label: "Thời gian TB",
+                curr: stats.avg_duration_minutes,
+                prev: Math.round(prevPoints.reduce((s, p) => s + p.avg_duration, 0) / prevPoints.length),
+                change: stats.duration_change,
+                color: "text-sky-500",
+                unit: " ph",
+              },
+            ].map((row) => (
+              <div
+                key={row.label}
+                className="flex items-center justify-between rounded-xl px-4 py-2.5"
+                style={{ background: "var(--bg-surface-2)" }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className={`text-lg font-black tabular-nums ${row.color}`}>
+                    {row.curr.toLocaleString()}{row.unit ?? ""}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    {row.label}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>
+                    KT: {row.prev.toLocaleString()}{row.unit ?? ""}
+                  </span>
+                  <TrendBadge value={row.change} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Returning rate progress */}
+          <div className="mt-4">
+            <div className="mb-1.5 flex items-center justify-between text-xs">
+              <span style={{ color: "var(--text-muted)" }}>Tỷ lệ khách quay lại</span>
+              <span className="font-semibold" style={{ color: "var(--text-primary)" }}>
+                {stats.total_customers > 0
+                  ? Math.round((stats.returning_customers / stats.total_customers) * 100)
+                  : 0}%
+              </span>
+            </div>
+            <div
+              className="h-2 overflow-hidden rounded-full"
+              style={{ background: "var(--bg-surface-3, var(--bg-surface-2))" }}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-700"
+                style={{
+                  width: `${stats.total_customers > 0
+                    ? Math.round((stats.returning_customers / stats.total_customers) * 100)
+                    : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+        </Card>
       </div>
     </div>
   );

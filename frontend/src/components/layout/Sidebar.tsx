@@ -16,6 +16,7 @@ import {
   TrendingUp,
   Sparkles,
   Eye,
+  Flame,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -36,6 +37,7 @@ const itemAccent: Record<string, string> = {
   "/daily-stats": "from-cyan-500 to-blue-600",
   "/segments":    "from-orange-500 to-amber-600",
   "/visit-profiles": "from-emerald-500 to-teal-600",
+  "/heatmap": "from-rose-500 to-red-600",
 };
 
 const itemIconColor: Record<string, string> = {
@@ -50,6 +52,7 @@ const itemIconColor: Record<string, string> = {
   "/daily-stats": "text-cyan-500 dark:text-cyan-400",
   "/segments":    "text-orange-500 dark:text-orange-400",
   "/visit-profiles": "text-emerald-500 dark:text-emerald-400",
+  "/heatmap": "text-rose-500 dark:text-rose-400",
 };
 
 const menuItems = [
@@ -107,6 +110,13 @@ const menuItems = [
     href: "/zones",
     icon: MapPin,
     desc: "ROI & Tracking",
+    permission: null,
+  },
+  {
+    label: "Bản đồ nhiệt",
+    href: "/heatmap",
+    icon: Flame,
+    desc: "Zone Heatmap",
     permission: null,
   },
   {
