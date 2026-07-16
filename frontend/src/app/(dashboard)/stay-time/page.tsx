@@ -56,7 +56,7 @@ export default function StayTimePage() {
   }, []);
 
   // ⚡ BẬT chế độ xem thử biểu đồ với dữ liệu giả (đổi thành false khi có dữ liệu thật)
-  const DEMO_CHARTS = true;
+  const DEMO_CHARTS = false;
 
   // Fetch dữ liệu từ API mỗi khi bộ lọc thay đổi
   const fetchData = useCallback(() => {
