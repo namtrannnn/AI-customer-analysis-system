@@ -16,6 +16,7 @@ from app.routers import permission_router
 from app.routers import video_router
 from app.routers import zone_router
 from app.routers import track_router
+from app.routers import segment_router
 from app.routers import person_profile_router
 from app.routers import duration_router
 from app.routers import daily_statistics_router
@@ -48,6 +49,7 @@ app.include_router(permission_router.router)
 app.include_router(video_router.router)
 app.include_router(zone_router.router)
 app.include_router(track_router.router)
+app.include_router(segment_router.router)
 app.include_router(duration_router.router)
 app.include_router(daily_statistics_router.router)
 
