@@ -56,7 +56,7 @@ export default function StayTimePage() {
   }, []);
 
   // ⚡ BẬT chế độ xem thử biểu đồ với dữ liệu giả (đổi thành false khi có dữ liệu thật)
-  const DEMO_CHARTS = true;
+  const DEMO_CHARTS = false;
 
   // Fetch dữ liệu từ API mỗi khi bộ lọc thay đổi
   const fetchData = useCallback(() => {
@@ -73,22 +73,38 @@ export default function StayTimePage() {
 
         // Nếu đang ở chế độ demo → dùng dữ liệu giả cho biểu đồ
         if (DEMO_CHARTS) {
+          const start = filters.start_date || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+          const end = filters.end_date || new Date().toISOString().split("T")[0];
+          
+          const generatedTrend = [];
+          const startDate = new Date(start);
+          const endDate = new Date(end);
+          const diffTime = endDate.getTime() - startDate.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const daysToGen = Math.min(Math.max(diffDays + 1, 1), 31); // Limit to max 31 days to keep chart readable
+          
+          for (let i = 0; i < daysToGen; i++) {
+            const tempDate = new Date(startDate);
+            tempDate.setDate(startDate.getDate() + i);
+            const dateStr = tempDate.toISOString().split("T")[0];
+            
+            // Generate deterministic but realistic values using a date hash
+            const hash = dateStr.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            const avg_dur = 160 + (hash % 260); // 160s to 420s
+            const visits = 40 + (hash % 60);    // 40 to 100 visits
+            
+            generatedTrend.push({
+              date: dateStr,
+              avg_duration_seconds: avg_dur,
+              visit_count: visits
+            });
+          }
+
           setStats({
             avg_duration_seconds: 342,
             total_visits: 1247,
             max_duration_seconds: 2460,
-            trend: [
-              { date: "2026-06-30", avg_duration_seconds: 180, visit_count: 45 },
-              { date: "2026-07-01", avg_duration_seconds: 240, visit_count: 62 },
-              { date: "2026-07-02", avg_duration_seconds: 195, visit_count: 51 },
-              { date: "2026-07-03", avg_duration_seconds: 310, visit_count: 78 },
-              { date: "2026-07-04", avg_duration_seconds: 420, visit_count: 93 },
-              { date: "2026-07-05", avg_duration_seconds: 380, visit_count: 87 },
-              { date: "2026-07-06", avg_duration_seconds: 290, visit_count: 68 },
-              { date: "2026-07-07", avg_duration_seconds: 350, visit_count: 82 },
-              { date: "2026-07-08", avg_duration_seconds: 410, visit_count: 91 },
-              { date: "2026-07-09", avg_duration_seconds: 365, visit_count: 90 },
-            ],
+            trend: generatedTrend,
           });
           setDistribution([
             { bucket_name: "Dưới 1 phút", visit_count: 187 },

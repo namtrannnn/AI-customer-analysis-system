@@ -255,7 +255,7 @@ export default function CustomerSegmentsPage() {
         </div>
 
         {/* Cột phải: Biểu đồ tròn trực quan tỷ lệ các cụm */}
-        <div className="p-6 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-2xs flex flex-col justify-between min-h-[350px]">
+        <div className="p-6 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-2xs flex flex-col gap-4 min-h-[350px] justify-start">
           <div>
             <h2 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-2 mb-2">
               <Users className="h-4 w-4 text-amber-500" />
@@ -264,9 +264,9 @@ export default function CustomerSegmentsPage() {
             <p className="text-xs text-slate-400">Tỷ trọng số lượng khách hàng của từng phân cụm trong hệ thống</p>
           </div>
 
-          <div className="h-56 relative flex items-center justify-center">
+          <div className="h-48 relative flex items-center justify-center shrink-0">
             {loadingSegments ? (
-              <div className="h-36 w-36 rounded-full border-4 border-dashed border-slate-200 dark:border-slate-700 animate-spin" />
+              <div className="h-32 w-32 rounded-full border-4 border-dashed border-slate-200 dark:border-slate-700 animate-spin" />
             ) : segments.length === 0 ? (
               <div className="text-xs text-slate-400">Không có dữ liệu biểu đồ</div>
             ) : (
@@ -276,8 +276,8 @@ export default function CustomerSegmentsPage() {
                     data={pieData}
                     cx="50%"
                     cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
+                    innerRadius={45}
+                    outerRadius={75}
                     paddingAngle={3}
                     dataKey="value"
                   >
@@ -289,16 +289,36 @@ export default function CustomerSegmentsPage() {
                     contentStyle={{ background: "#1e293b", border: "none", borderRadius: 8, fontSize: 11, color: "#fff" }}
                     formatter={(value: any) => value !== undefined ? [`${value} khách`, "Số lượng"] : ["", ""]}
                   />
-                  <Legend
-                    verticalAlign="bottom"
-                    iconType="circle"
-                    iconSize={8}
-                    wrapperStyle={{ fontSize: 10, fontWeight: 600 }}
-                  />
                 </PieChart>
               </ResponsiveContainer>
             )}
           </div>
+
+          {/* Custom detailed Legend with percentages */}
+          {!loadingSegments && segments.length > 0 && (
+            <div className="mt-2 pt-3 border-t border-slate-100 dark:border-slate-700/60 space-y-2">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Chi tiết tỷ lệ:</p>
+              <div className="grid grid-cols-1 gap-1.5">
+                {segments.map((seg, idx) => {
+                  const color = COLORS[idx % COLORS.length];
+                  const totalMembers = segments.reduce((sum, s) => sum + s.member_count, 0);
+                  const percent = totalMembers > 0 ? ((seg.member_count / totalMembers) * 100).toFixed(1) : "0.0";
+                  return (
+                    <div key={seg.id} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                        <span className="font-semibold text-slate-700 dark:text-slate-350 truncate">{seg.segment_name}</span>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-slate-400 text-[10px]">{seg.member_count} khách</span>
+                        <span className="font-extrabold text-slate-800 dark:text-slate-250 w-12 text-right">{percent}%</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

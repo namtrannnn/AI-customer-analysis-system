@@ -39,6 +39,25 @@ function intensityToHSL(intensity: number): { fill: string; stroke: string; labe
   };
 }
 
+// ─── Polygon Helper Functions ───────────────────────────────────────────────
+function isPointInPolygon(px: number, py: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function getPolygonCentroid(poly: { x: number; y: number }[]): { x: number; y: number } {
+  if (poly.length === 0) return { x: 0.5, y: 0.5 };
+  const sum = poly.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / poly.length, y: sum.y / poly.length };
+}
+
 export default function ZoneHeatmapPage() {
   // ─── State ──────────────────────────────────────────────
   const [heatmapItems, setHeatmapItems] = useState<ZoneHeatmapItem[]>([]);
@@ -55,6 +74,11 @@ export default function ZoneHeatmapPage() {
   const [error, setError] = useState<string | null>(null);
   const [hoveredZone, setHoveredZone] = useState<ZoneHeatmapItem | null>(null);
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+
+  // Smooth Heatmap Settings
+  const [displayMode, setDisplayMode] = useState<"smooth" | "polygon">("smooth");
+  const [heatRadius, setHeatRadius] = useState<number>(40);
+  const [heatOpacity, setHeatOpacity] = useState<number>(0.85);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -122,68 +146,234 @@ export default function ZoneHeatmapPage() {
       ctx.fillRect(0, 0, W, H);
     }
 
-    // Draw zone polygons with heatmap colors
-    heatmapItems.forEach((item) => {
-      if (!item.polygon || item.polygon.length < 3) return;
+    if (displayMode === "polygon") {
+      // Draw zone polygons with heatmap colors
+      heatmapItems.forEach((item) => {
+        if (!item.polygon || item.polygon.length < 3) return;
 
-      const colors = intensityToHSL(item.intensity);
+        const colors = intensityToHSL(item.intensity);
 
-      // Fill polygon
+        // Fill polygon
+        ctx.beginPath();
+        item.polygon.forEach((p, i) => {
+          const cx = p.x * W;
+          const cy = p.y * H;
+          i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
+        });
+        ctx.closePath();
+        ctx.fillStyle = colors.fill;
+        ctx.fill();
+        ctx.strokeStyle = colors.stroke;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Zone label (tên vùng + intensity %)
+        const centerX = item.polygon.reduce((s, p) => s + p.x, 0) / item.polygon.length * W;
+        const centerY = item.polygon.reduce((s, p) => s + p.y, 0) / item.polygon.length * H;
+
+        // Label background pill
+        const labelText = item.zone_name;
+        const intensityText = `${Math.round(item.intensity)}%`;
+        ctx.font = "bold 12px 'Inter', sans-serif";
+        const textWidth = ctx.measureText(labelText).width;
+        const pillW = textWidth + 40;
+        const pillH = 36;
+
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.beginPath();
+        const rx = centerX - pillW / 2;
+        const ry = centerY - pillH / 2;
+        const r = 8;
+        ctx.moveTo(rx + r, ry);
+        ctx.lineTo(rx + pillW - r, ry);
+        ctx.quadraticCurveTo(rx + pillW, ry, rx + pillW, ry + r);
+        ctx.lineTo(rx + pillW, ry + pillH - r);
+        ctx.quadraticCurveTo(rx + pillW, ry + pillH, rx + pillW - r, ry + pillH);
+        ctx.lineTo(rx + r, ry + pillH);
+        ctx.quadraticCurveTo(rx, ry + pillH, rx, ry + pillH - r);
+        ctx.lineTo(rx, ry + r);
+        ctx.quadraticCurveTo(rx, ry, rx + r, ry);
+        ctx.closePath();
+        ctx.fill();
+
+        // Zone name
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 11px 'Inter', sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(labelText, centerX, centerY - 6);
+
+        // Intensity %
+        ctx.fillStyle = colors.label;
+        ctx.font = "bold 10px 'Inter', sans-serif";
+        ctx.fillText(intensityText, centerX, centerY + 8);
+      });
+    } else {
+      // ─── Smooth Heatmap Mode ───
+      // 1. Create a shadow canvas
+      const shadowCanvas = document.createElement("canvas");
+      shadowCanvas.width = W;
+      shadowCanvas.height = H;
+      const sCtx = shadowCanvas.getContext("2d");
+
+      if (sCtx && heatmapItems.length > 0) {
+        // 2. Generate points for heatmap
+        const points: { x: number; y: number; weight: number }[] = [];
+        
+        heatmapItems.forEach((item) => {
+          if (!item.polygon || item.polygon.length < 3) return;
+
+          // Get bounding box of relative coordinates (0..1)
+          let minX = 1, maxX = 0, minY = 1, maxY = 0;
+          item.polygon.forEach((p) => {
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+          });
+
+          // Sample grid points inside polygon
+          const stepX = 16 / W; // spacing of 16px in relative coordinates
+          const stepY = 16 / H;
+
+          for (let px = minX; px <= maxX; px += stepX) {
+            for (let py = minY; py <= maxY; py += stepY) {
+              if (isPointInPolygon(px, py, item.polygon)) {
+                points.push({
+                  x: px * W,
+                  y: py * H,
+                  weight: item.intensity,
+                });
+              }
+            }
+          }
+
+          // Always include centroid to make sure small zones have heat
+          const centroid = getPolygonCentroid(item.polygon);
+          points.push({
+            x: centroid.x * W,
+            y: centroid.y * H,
+            weight: item.intensity,
+          });
+        });
+
+        // 3. Create radial gradient brush canvas
+        const radius = heatRadius;
+        const brush = document.createElement("canvas");
+        brush.width = radius * 2;
+        brush.height = radius * 2;
+        const bCtx = brush.getContext("2d");
+        if (bCtx) {
+          const grad = bCtx.createRadialGradient(radius, radius, radius * 0.1, radius, radius, radius);
+          grad.addColorStop(0, "rgba(0,0,0,1)");
+          grad.addColorStop(1, "rgba(0,0,0,0)");
+          bCtx.fillStyle = grad;
+          bCtx.beginPath();
+          bCtx.arc(radius, radius, radius, 0, Math.PI * 2);
+          bCtx.fill();
+        }
+
+        // 4. Draw brush circles on shadow canvas
+        points.forEach((pt) => {
+          sCtx.globalAlpha = (pt.weight / 100) * 0.18 * heatOpacity;
+          sCtx.drawImage(brush, pt.x - radius, pt.y - radius);
+        });
+
+        // 5. Build color mapping palette
+        const palette = document.createElement("canvas");
+        palette.width = 256;
+        palette.height = 1;
+        const pCtx = palette.getContext("2d");
+        if (pCtx) {
+          const grad = pCtx.createLinearGradient(0, 0, 256, 0);
+          grad.addColorStop(0.0, "rgba(0, 0, 255, 0)");
+          grad.addColorStop(0.15, "rgba(0, 0, 255, 0.2)");
+          grad.addColorStop(0.35, "rgba(0, 255, 255, 0.5)");
+          grad.addColorStop(0.55, "rgba(0, 255, 0, 0.75)");
+          grad.addColorStop(0.75, "rgba(255, 255, 0, 0.85)");
+          grad.addColorStop(0.9, "rgba(255, 128, 0, 0.95)");
+          grad.addColorStop(1.0, "rgba(255, 0, 0, 1.0)");
+          pCtx.fillStyle = grad;
+          pCtx.fillRect(0, 0, 256, 1);
+        }
+        const paletteData = pCtx ? pCtx.getImageData(0, 0, 256, 1).data : null;
+
+        // 6. Apply palette colors to shadow canvas pixels
+        if (paletteData) {
+          const imgData = sCtx.getImageData(0, 0, W, H);
+          const pix = imgData.data;
+          for (let i = 0; i < pix.length; i += 4) {
+            const alpha = pix[i + 3];
+            if (alpha > 0) {
+              const index = alpha * 4;
+              pix[i]     = paletteData[index];
+              pix[i + 1] = paletteData[index + 1];
+              pix[i + 2] = paletteData[index + 2];
+              pix[i + 3] = Math.min(alpha * heatOpacity, paletteData[index + 3]);
+            }
+          }
+          sCtx.putImageData(imgData, 0, 0);
+        }
+
+        // 7. Render shadow canvas onto main canvas
+        ctx.drawImage(shadowCanvas, 0, 0);
+      }
+
+      // 8. Draw labels for zones in smooth mode (at their centroids, slightly translucent)
+      heatmapItems.forEach((item) => {
+        if (!item.polygon || item.polygon.length < 3) return;
+        const centroid = getPolygonCentroid(item.polygon);
+        const cx = centroid.x * W;
+        const cy = centroid.y * H;
+        
+        ctx.fillStyle = "rgba(15, 23, 42, 0.7)";
+        ctx.font = "bold 10px 'Inter', sans-serif";
+        const labelText = item.zone_name;
+        const textWidth = ctx.measureText(labelText).width;
+        
+        ctx.beginPath();
+        const rx = cx - (textWidth + 12) / 2;
+        const ry = cy - 8;
+        const rw = textWidth + 12;
+        const rh = 16;
+        if (ctx.roundRect) {
+          ctx.roundRect(rx, ry, rw, rh, 4);
+        } else {
+          ctx.rect(rx, ry, rw, rh);
+        }
+        ctx.fill();
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(labelText, cx, cy);
+      });
+    }
+
+    // ─── Draw Highlight outline for hovered zone ───
+    if (hoveredZone && hoveredZone.polygon && hoveredZone.polygon.length >= 3) {
       ctx.beginPath();
-      item.polygon.forEach((p, i) => {
+      hoveredZone.polygon.forEach((p, i) => {
         const cx = p.x * W;
         const cy = p.y * H;
         i === 0 ? ctx.moveTo(cx, cy) : ctx.lineTo(cx, cy);
       });
       ctx.closePath();
-      ctx.fillStyle = colors.fill;
-      ctx.fill();
-      ctx.strokeStyle = colors.stroke;
-      ctx.lineWidth = 2.5;
+      
+      // Draw neon highlighted border
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 3;
+      ctx.setLineDash([5, 4]); // Dashed line
       ctx.stroke();
-
-      // Zone label (tên vùng + intensity %)
-      const centerX = item.polygon.reduce((s, p) => s + p.x, 0) / item.polygon.length * W;
-      const centerY = item.polygon.reduce((s, p) => s + p.y, 0) / item.polygon.length * H;
-
-      // Label background pill
-      const labelText = item.zone_name;
-      const intensityText = `${Math.round(item.intensity)}%`;
-      ctx.font = "bold 12px 'Inter', sans-serif";
-      const textWidth = ctx.measureText(labelText).width;
-      const pillW = textWidth + 40;
-      const pillH = 36;
-
-      ctx.fillStyle = "rgba(0,0,0,0.65)";
-      ctx.beginPath();
-      const rx = centerX - pillW / 2;
-      const ry = centerY - pillH / 2;
-      const r = 8;
-      ctx.moveTo(rx + r, ry);
-      ctx.lineTo(rx + pillW - r, ry);
-      ctx.quadraticCurveTo(rx + pillW, ry, rx + pillW, ry + r);
-      ctx.lineTo(rx + pillW, ry + pillH - r);
-      ctx.quadraticCurveTo(rx + pillW, ry + pillH, rx + pillW - r, ry + pillH);
-      ctx.lineTo(rx + r, ry + pillH);
-      ctx.quadraticCurveTo(rx, ry + pillH, rx, ry + pillH - r);
-      ctx.lineTo(rx, ry + r);
-      ctx.quadraticCurveTo(rx, ry, rx + r, ry);
-      ctx.closePath();
-      ctx.fill();
-
-      // Zone name
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 11px 'Inter', sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(labelText, centerX, centerY - 6);
-
-      // Intensity %
-      ctx.fillStyle = colors.label;
-      ctx.font = "bold 10px 'Inter', sans-serif";
-      ctx.fillText(intensityText, centerX, centerY + 8);
-    });
-  }, [heatmapItems]);
+      ctx.setLineDash([]); // Reset dash
+      
+      // Subtly outline it with zone's intensity color
+      const colors = intensityToHSL(hoveredZone.intensity);
+      ctx.strokeStyle = colors.stroke;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    }
+  }, [heatmapItems, displayMode, heatRadius, heatOpacity, hoveredZone]);
 
   // Redraw when data changes
   useEffect(() => {
@@ -310,6 +500,69 @@ export default function ZoneHeatmapPage() {
         {totalVisitsSum > 0 && (
           <div className="ml-auto text-xs font-bold text-slate-400 bg-slate-50 dark:bg-slate-900/50 px-3 py-1.5 rounded-xl">
             Tổng lượt ghé: <span className="text-rose-500">{totalVisitsSum}</span> lượt
+          </div>
+        )}
+      </div>
+
+      {/* Control Panel: Chế độ hiển thị & Cấu hình bán kính/độ mờ */}
+      <div className="flex flex-wrap items-center gap-6 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700/60 shadow-sm">
+        {/* Toggle Mode */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-bold text-slate-500 uppercase dark:text-slate-400">Chế độ hiển thị:</span>
+          <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-xl">
+            <button
+              onClick={() => setDisplayMode("smooth")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                displayMode === "smooth"
+                  ? "bg-rose-500 text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Bản đồ nhiệt mịn (Smooth)
+            </button>
+            <button
+              onClick={() => setDisplayMode("polygon")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                displayMode === "polygon"
+                  ? "bg-rose-500 text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+              }`}
+            >
+              Vùng đa giác (Polygon)
+            </button>
+          </div>
+        </div>
+
+        {/* Sliders (only active in smooth mode) */}
+        {displayMode === "smooth" && (
+          <div className="flex flex-wrap items-center gap-6 flex-1 sm:flex-initial">
+            {/* Heat Radius Slider */}
+            <div className="flex items-center gap-2.5 min-w-[200px] flex-1 sm:flex-initial">
+              <span className="text-xs font-bold text-slate-500 uppercase dark:text-slate-400 whitespace-nowrap">Bán kính:</span>
+              <input
+                type="range"
+                min="15"
+                max="80"
+                value={heatRadius}
+                onChange={(e) => setHeatRadius(Number(e.target.value))}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
+              />
+              <span className="text-xs font-bold text-rose-500 min-w-[30px] text-right">{heatRadius}px</span>
+            </div>
+
+            {/* Heat Opacity Slider */}
+            <div className="flex items-center gap-2.5 min-w-[200px] flex-1 sm:flex-initial">
+              <span className="text-xs font-bold text-slate-500 uppercase dark:text-slate-400 whitespace-nowrap">Độ rõ:</span>
+              <input
+                type="range"
+                min="10"
+                max="100"
+                value={Math.round(heatOpacity * 100)}
+                onChange={(e) => setHeatOpacity(Number(e.target.value) / 100)}
+                className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-rose-500"
+              />
+              <span className="text-xs font-bold text-rose-500 min-w-[35px] text-right">{Math.round(heatOpacity * 100)}%</span>
+            </div>
           </div>
         )}
       </div>
