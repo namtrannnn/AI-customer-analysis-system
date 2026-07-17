@@ -7,6 +7,8 @@ import {
   User,
   ShieldCheck,
   UserRoundCheck,
+  LoaderCircle,
+  UserPlus,
 } from "lucide-react";
 
 import type { StreamDetectionPayload } from "@/services/video_stream.service";
@@ -18,8 +20,8 @@ interface LiveDetectionsListProps {
 function getDetectionIdentityKey(
   detection: StreamDetectionPayload,
 ): string {
-  // Giữ key ổn định từ lúc live P_000X đến khi có global identity.
-  // Nếu ưu tiên person_profile_id, cùng một người sẽ bị tách thành 2 dòng.
+  // Giữ key ổn định trong suốt quá trình stream.
+  // session_profile_id được ưu tiên vì P_000X tồn tại xuyên suốt session.
   if (detection.session_profile_id) {
     return `session-${detection.session_profile_id}`;
   }
@@ -38,12 +40,43 @@ function getDetectionIdentityKey(
 function getCurrentAvatar(
   detection: StreamDetectionPayload,
 ): string | null {
+  // Đảo thứ tự: Ưu tiên ảnh định danh và ảnh trong DB trước ảnh live stream
   return (
-    detection.current_video_avatar ||
-    detection.customer_avatar ||
-    detection.identified_customer_avatar ||
-    detection.stored_profile_avatar ||
+    detection.identified_customer_avatar || // 1. Khách hàng đã định danh VIP/Đăng ký
+    detection.customer_avatar ||            // 2. Khách hàng đã có thông tin
+    detection.stored_profile_avatar ||      // 3. Khách quay lại (có profile ẩn danh trong DB)
+    detection.current_video_avatar ||       // 4. Khách mới (dùng ảnh mặt cắt từ video)
     null
+  );
+}
+
+function normalizeCustomerType(
+  value: unknown,
+): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
+}
+
+function isFinalIdentityResolved(
+  detection: StreamDetectionPayload,
+): boolean {
+  const normalizedType = normalizeCustomerType(
+    detection.customer_type,
+  );
+
+  // Global identity đã xử lý khi có PersonProfile toàn cục
+  // và customer_type đã mang kết luận new/returning.
+  return (
+    detection.person_profile_id != null &&
+    [
+      "new",
+      "new_customer",
+      "returning",
+      "returning_customer",
+    ].includes(normalizedType)
   );
 }
 
@@ -62,12 +95,53 @@ export default function LiveDetectionsList({
       const key = getDetectionIdentityKey(detection);
       const existing = uniqueDetections.get(key);
 
-      if (
-        !existing ||
-        detection.frame_index >= existing.frame_index
-      ) {
+      if (!existing) {
         uniqueDetections.set(key, detection);
+        continue;
       }
+
+      const incomingResolved =
+        isFinalIdentityResolved(detection);
+      const existingResolved =
+        isFinalIdentityResolved(existing);
+
+      // Global identity update có thể mang frame_index cũ hơn detection live.
+      // Vẫn phải cho phép nó cập nhật New/Returning.
+      const shouldReplace =
+        incomingResolved ||
+        !existingResolved ||
+        detection.frame_index >= existing.frame_index;
+
+      if (!shouldReplace) {
+        continue;
+      }
+
+      uniqueDetections.set(key, {
+        ...existing,
+        ...detection,
+
+        // Không làm mất avatar video hiện tại khi global identity event
+        // không gửi lại ảnh.
+        current_video_avatar:
+          detection.current_video_avatar ||
+          existing.current_video_avatar ||
+          null,
+
+        customer_avatar:
+          detection.customer_avatar ||
+          existing.customer_avatar ||
+          null,
+
+        identified_customer_avatar:
+          detection.identified_customer_avatar ||
+          existing.identified_customer_avatar ||
+          null,
+
+        stored_profile_avatar:
+          detection.stored_profile_avatar ||
+          existing.stored_profile_avatar ||
+          null,
+      });
     }
 
     return Array.from(uniqueDetections.values()).sort(
@@ -117,27 +191,50 @@ export default function LiveDetectionsList({
         ) : (
           <div className="space-y-2.5">
             {sortedDetections.map((detection) => {
-              const key = getDetectionIdentityKey(detection);
-              const avatar = getCurrentAvatar(detection);
+              const key =
+                getDetectionIdentityKey(detection);
+              const avatar =
+                getCurrentAvatar(detection);
 
               const isIdentified = Boolean(
                 detection.customer_id,
               );
 
-              const normalizedCustomerType = String(
-                detection.customer_type ?? "",
-              ).trim().toLowerCase();
+              const normalizedCustomerType =
+                normalizeCustomerType(
+                  detection.customer_type,
+                );
+
+              const identityResolved =
+                isFinalIdentityResolved(detection);
 
               const isReturning =
-                normalizedCustomerType === "returning" ||
-                normalizedCustomerType === "returning_customer";
+                identityResolved &&
+                [
+                  "returning",
+                  "returning_customer",
+                ].includes(normalizedCustomerType);
+
+              const isNew =
+                identityResolved &&
+                [
+                  "new",
+                  "new_customer",
+                ].includes(normalizedCustomerType);
+
+              const isPending =
+                !isIdentified &&
+                !identityResolved;
 
               const confidence = Number.isFinite(
                 detection.confidence,
               )
                 ? Math.max(
                     0,
-                    Math.min(1, detection.confidence),
+                    Math.min(
+                      1,
+                      detection.confidence,
+                    ),
                   )
                 : 0;
 
@@ -189,7 +286,9 @@ export default function LiveDetectionsList({
                             ? `Khách quay lại · ${
                                 detection.total_visits ?? 2
                               } lượt`
-                            : "Khách ẩn danh mới"}
+                            : isNew
+                              ? "Khách ẩn danh mới"
+                              : "Đang đối chiếu hồ sơ khách hàng"}
                       </span>
                     </div>
                   </div>
@@ -205,9 +304,15 @@ export default function LiveDetectionsList({
                         <UserRoundCheck className="h-3 w-3" />
                         Returning
                       </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                    ) : isNew ? (
+                      <span className="inline-flex items-center gap-0.5 rounded border border-sky-100 bg-sky-50 px-2 py-0.5 text-[9px] font-bold text-sky-600 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-400">
+                        <UserPlus className="h-3 w-3" />
                         New ANON
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded border border-amber-100 bg-amber-50 px-2 py-0.5 text-[9px] font-bold text-amber-600 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-400">
+                        <LoaderCircle className="h-3 w-3 animate-spin" />
+                        Verifying
                       </span>
                     )}
 

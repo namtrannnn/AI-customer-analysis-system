@@ -1,134 +1,544 @@
-/**
- * Component lớp phủ Bounding Box (StreamingOverlay)
- * Nhiệm vụ: Tự động điều chỉnh kích thước theo Video Player hiển thị thực tế
- * và vẽ các ô vuông nhận dạng kèm mã ID của từng người đang di chuyển.
- */
-
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import type { StreamDetectionPayload } from "@/services/video_stream.service";
 
 interface StreamingOverlayProps {
-  detections: StreamDetectionPayload[]; // Nhận các detections ở frame hiện tại
-  videoElement: HTMLVideoElement | null; // Cần phần tử HTMLVideoElement để lấy kích thước thật
+  detections: StreamDetectionPayload[];
+  videoElement: HTMLVideoElement | null;
 }
 
-export default function StreamingOverlay({ detections, videoElement }: StreamingOverlayProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [scale, setScale] = useState({ x: 1, y: 1 });
-  const [offset, setOffset] = useState({ left: 0, top: 0 });
+interface DisplayDetection extends StreamDetectionPayload {
+  receivedAtMs: number;
+}
 
-  // Theo dõi kích thước hiển thị thực tế của video để scale tỉ lệ tọa độ
+interface OverlayScale {
+  width: number;
+  height: number;
+  left: number;
+  top: number;
+}
+
+const BOX_CONFIG = {
+  // Không xóa bbox chỉ vì một vài event WebSocket bị thưa.
+  // Bbox chỉ bị xóa khi timeline video đã đi xa detection cuối.
+  sourceTimelineTtlSeconds: 2.0,
+
+  // Fallback nếu payload không có source_timestamp_seconds.
+  wallClockTtlMs: 3000,
+
+  // Chặn bbox lỗi/siêu nhỏ.
+  minimumBoxSizePx: 4,
+} as const;
+
+function isValidBBox(
+  bbox: StreamDetectionPayload["bbox"],
+): bbox is [number, number, number, number] {
+  if (!Array.isArray(bbox) || bbox.length !== 4) {
+    return false;
+  }
+
+  if (!bbox.every((value) => Number.isFinite(value))) {
+    return false;
+  }
+
+  const [x1, y1, x2, y2] = bbox;
+  return x2 > x1 && y2 > y1;
+}
+
+function normalizeBBox(
+  detection: StreamDetectionPayload,
+): [number, number, number, number] | null {
+  if (!isValidBBox(detection.bbox)) {
+    return null;
+  }
+
+  const [x1, y1, x2, y2] = detection.bbox;
+
+  // Backend đã trả bbox normalized.
+  if (
+    x1 >= 0 &&
+    y1 >= 0 &&
+    x2 <= 1 &&
+    y2 <= 1
+  ) {
+    return [
+      Math.max(0, Math.min(1, x1)),
+      Math.max(0, Math.min(1, y1)),
+      Math.max(0, Math.min(1, x2)),
+      Math.max(0, Math.min(1, y2)),
+    ];
+  }
+
+  // Fallback cho bbox pixel nếu payload có kích thước frame nguồn.
+  const payload = detection as StreamDetectionPayload & {
+    frame_width?: number;
+    frame_height?: number;
+    source_width?: number;
+    source_height?: number;
+  };
+
+  const frameWidth = Number(
+    payload.frame_width ?? payload.source_width ?? 0,
+  );
+  const frameHeight = Number(
+    payload.frame_height ?? payload.source_height ?? 0,
+  );
+
+  if (
+    !Number.isFinite(frameWidth) ||
+    !Number.isFinite(frameHeight) ||
+    frameWidth <= 0 ||
+    frameHeight <= 0
+  ) {
+    return null;
+  }
+
+  return [
+    Math.max(0, Math.min(1, x1 / frameWidth)),
+    Math.max(0, Math.min(1, y1 / frameHeight)),
+    Math.max(0, Math.min(1, x2 / frameWidth)),
+    Math.max(0, Math.min(1, y2 / frameHeight)),
+  ];
+}
+
+function getBoxClasses(trackId: number): {
+  border: string;
+  background: string;
+  label: string;
+} {
+  const styles = [
+    {
+      border: "border-emerald-500",
+      background: "bg-emerald-500/10",
+      label: "bg-emerald-500",
+    },
+    {
+      border: "border-indigo-500",
+      background: "bg-indigo-500/10",
+      label: "bg-indigo-500",
+    },
+    {
+      border: "border-amber-500",
+      background: "bg-amber-500/10",
+      label: "bg-amber-500",
+    },
+    {
+      border: "border-rose-500",
+      background: "bg-rose-500/10",
+      label: "bg-rose-500",
+    },
+    {
+      border: "border-cyan-500",
+      background: "bg-cyan-500/10",
+      label: "bg-cyan-500",
+    },
+    {
+      border: "border-violet-500",
+      background: "bg-violet-500/10",
+      label: "bg-violet-500",
+    },
+  ];
+
+  const safeTrackId = Math.abs(
+    Number.isFinite(trackId) ? trackId : 0,
+  );
+
+  return styles[safeTrackId % styles.length];
+}
+
+
+function normalizeIdentityStatus(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
+}
+
+function isStableProfile(
+  detection: StreamDetectionPayload,
+): boolean {
+  const status = normalizeIdentityStatus(
+    detection.identity_status,
+  );
+
+  if (
+    [
+      "TEMP",
+      "PENDING",
+      "TENTATIVE",
+      "RECHECK",
+      "ANALYZING",
+      "UNKNOWN",
+    ].includes(status)
+  ) {
+    return false;
+  }
+
+  const profileId = String(
+    detection.session_profile_id ??
+      detection.anonymous_code ??
+      "",
+  );
+
+  return (
+    /^P_\d+$/i.test(profileId) ||
+    detection.person_profile_id != null
+  );
+}
+
+function getPendingLabel(
+  detection: StreamDetectionPayload,
+): string {
+  const status = normalizeIdentityStatus(
+    detection.identity_status,
+  );
+
+  if (status === "RECHECK") {
+    return "Đang kiểm tra lại";
+  }
+
+  if (
+    status === "PENDING" ||
+    status === "TENTATIVE"
+  ) {
+    return "Đang xác minh";
+  }
+
+  return "Đang phát hiện";
+}
+
+export default function StreamingOverlay({
+  detections,
+  videoElement,
+}: StreamingOverlayProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const [scale, setScale] = useState<OverlayScale>({
+    width: 1,
+    height: 1,
+    left: 0,
+    top: 0,
+  });
+
+  // Một track chỉ có một bbox trong DOM.
+  // detection prop rỗng không làm xóa box ngay.
+  const [displayByTrack, setDisplayByTrack] = useState<
+    Map<number, DisplayDetection>
+  >(new Map());
+
   useEffect(() => {
-    if (!videoElement) return;
+    if (!videoElement) {
+      return;
+    }
 
     const updateScale = () => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const videoWidth = videoElement.videoWidth || 640;
-      const videoHeight = videoElement.videoHeight || 360;
-
-      // Đo kích thước hiển thị của video trên trình duyệt
       const rect = videoElement.getBoundingClientRect();
-      
-      // Tính toán vùng chứa tỉ lệ co dãn (letterbox/pillarbox)
-      const videoAspect = videoWidth / videoHeight;
-      const elementAspect = rect.width / rect.height;
+
+      if (rect.width <= 0 || rect.height <= 0) {
+        return;
+      }
+
+      const sourceWidth =
+        videoElement.videoWidth || 640;
+      const sourceHeight =
+        videoElement.videoHeight || 360;
+
+      const sourceAspect =
+        sourceWidth / sourceHeight;
+      const elementAspect =
+        rect.width / rect.height;
 
       let displayWidth = rect.width;
       let displayHeight = rect.height;
       let left = 0;
       let top = 0;
 
-      if (elementAspect > videoAspect) {
-        // Có viền đen 2 bên (Pillarbox)
-        displayWidth = rect.height * videoAspect;
-        left = (rect.width - displayWidth) / 2;
+      if (elementAspect > sourceAspect) {
+        displayWidth =
+          rect.height * sourceAspect;
+        left =
+          (rect.width - displayWidth) / 2;
       } else {
-        // Có viền đen trên dưới (Letterbox)
-        displayHeight = rect.width / videoAspect;
-        top = (rect.height - displayHeight) / 2;
+        displayHeight =
+          rect.width / sourceAspect;
+        top =
+          (rect.height - displayHeight) / 2;
       }
 
       setScale({
-        x: displayWidth,
-        y: displayHeight,
-      });
-
-      setOffset({
+        width: displayWidth,
+        height: displayHeight,
         left,
         top,
       });
     };
 
-    // Khởi tạo và đăng ký lắng nghe sự kiện thay đổi kích thước
     updateScale();
-    const resizeObserver = new ResizeObserver(updateScale);
+
+    const resizeObserver =
+      new ResizeObserver(updateScale);
+
     resizeObserver.observe(videoElement);
+
+    videoElement.addEventListener(
+      "loadedmetadata",
+      updateScale,
+    );
 
     return () => {
       resizeObserver.disconnect();
+      videoElement.removeEventListener(
+        "loadedmetadata",
+        updateScale,
+      );
     };
   }, [videoElement]);
 
-  // Bộ bảng màu sắc riêng biệt cho từng ID để dễ phân biệt
-  const getBoxColor = (trackId: number) => {
-    const colors = [
-      "border-emerald-500 text-emerald-500 bg-emerald-500/10",
-      "border-indigo-500 text-indigo-500 bg-indigo-500/10",
-      "border-amber-500 text-amber-500 bg-amber-500/10",
-      "border-rose-500 text-rose-500 bg-rose-500/10",
-      "border-cyan-500 text-cyan-500 bg-cyan-500/10",
-      "border-violet-500 text-violet-500 bg-violet-500/10",
-    ];
-    return colors[trackId % colors.length];
-  };
+  useEffect(() => {
+    if (detections.length === 0) {
+      // Cố ý không clear. Overlay sẽ tự cleanup theo timeline video.
+      return;
+    }
+
+    const nowMs = performance.now();
+
+    setDisplayByTrack((previous) => {
+      const next = new Map(previous);
+
+      for (const detection of detections) {
+        if (!isValidBBox(detection.bbox)) {
+          continue;
+        }
+
+        const old = next.get(detection.track_id);
+
+        // Không cho event cũ ghi đè event mới, trừ khi nó là
+        // global identity update có cùng bbox.
+        if (
+          old &&
+          detection.frame_index < old.frame_index
+        ) {
+          next.set(detection.track_id, {
+            ...old,
+            person_profile_id:
+              detection.person_profile_id ??
+              old.person_profile_id,
+            session_profile_id:
+              detection.session_profile_id ??
+              old.session_profile_id,
+            anonymous_code:
+              detection.anonymous_code ??
+              old.anonymous_code,
+            customer_type:
+              detection.customer_type ??
+              old.customer_type,
+            total_visits:
+              detection.total_visits ??
+              old.total_visits,
+            customer_id:
+              detection.customer_id ??
+              old.customer_id,
+            customer_name:
+              detection.customer_name ??
+              old.customer_name,
+            current_video_avatar:
+              detection.current_video_avatar ??
+              old.current_video_avatar,
+          });
+
+          continue;
+        }
+
+        next.set(detection.track_id, {
+          ...old,
+          ...detection,
+          receivedAtMs: nowMs,
+        });
+      }
+
+      return next;
+    });
+  }, [detections]);
+
+  useEffect(() => {
+    if (!videoElement) {
+      return;
+    }
+
+    const cleanupTimer = window.setInterval(() => {
+      const videoTime = videoElement.currentTime;
+      const nowMs = performance.now();
+
+      setDisplayByTrack((previous) => {
+        let changed = false;
+        const next = new Map(previous);
+
+        for (const [trackId, detection] of next) {
+          const sourceTime = Number(
+            detection.source_timestamp_seconds,
+          );
+
+          let shouldRemove = false;
+
+          if (
+            Number.isFinite(sourceTime) &&
+            sourceTime >= 0
+          ) {
+            // Khi video giảm tốc, videoTime vẫn nhỏ hơn sourceTime,
+            // nên bbox không bị xóa.
+            shouldRemove =
+              videoTime - sourceTime >
+              BOX_CONFIG.sourceTimelineTtlSeconds;
+          } else {
+            shouldRemove =
+              nowMs - detection.receivedAtMs >
+              BOX_CONFIG.wallClockTtlMs;
+          }
+
+          if (shouldRemove) {
+            next.delete(trackId);
+            changed = true;
+          }
+        }
+
+        return changed ? next : previous;
+      });
+    }, 150);
+
+    return () => {
+      window.clearInterval(cleanupTimer);
+    };
+  }, [videoElement]);
+
+  const displayDetections = useMemo(
+    () =>
+      Array.from(displayByTrack.values()).sort(
+        (first, second) =>
+          first.track_id - second.track_id,
+      ),
+    [displayByTrack],
+  );
 
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 pointer-events-none z-10 overflow-hidden"
+      className="pointer-events-none absolute inset-0 z-10 overflow-hidden"
     >
-      {/* Vùng vẽ các khung Bounding Box lồng khớp với phần hiển thị của Video */}
       <div
         className="absolute"
         style={{
-          left: `${offset.left}px`,
-          top: `${offset.top}px`,
-          width: `${scale.x}px`,
-          height: `${scale.y}px`,
+          left: `${scale.left}px`,
+          top: `${scale.top}px`,
+          width: `${scale.width}px`,
+          height: `${scale.height}px`,
         }}
       >
-        {detections.map((d) => {
-          const [x1, y1, x2, y2] = d.bbox;
-          
-          // Chuyển đổi tỉ lệ relative (0..1) sang pixels
-          const left = x1 * scale.x;
-          const top = y1 * scale.y;
-          const width = (x2 - x1) * scale.x;
-          const height = (y2 - y1) * scale.y;
+        {displayDetections.map((detection) => {
+          const normalizedBBox =
+            normalizeBBox(detection);
 
-          const boxStyle = getBoxColor(d.track_id);
+          if (!normalizedBBox) {
+            return null;
+          }
+
+          const [x1, y1, x2, y2] =
+            normalizedBBox;
+
+          const left = x1 * scale.width;
+          const top = y1 * scale.height;
+          const width =
+            (x2 - x1) * scale.width;
+          const height =
+            (y2 - y1) * scale.height;
+
+          if (
+            width <
+              BOX_CONFIG.minimumBoxSizePx ||
+            height <
+              BOX_CONFIG.minimumBoxSizePx
+          ) {
+            return null;
+          }
+
+          const stableProfile =
+            isStableProfile(detection);
+
+          const classes = stableProfile
+            ? getBoxClasses(detection.track_id)
+            : {
+                border: "border-amber-400",
+                background: "bg-amber-400/5",
+                label: "bg-amber-500",
+              };
+
+          const displayName = stableProfile
+            ? (
+                detection.customer_name ||
+                detection.anonymous_code ||
+                detection.session_profile_id ||
+                `Track ${detection.track_id}`
+              )
+            : getPendingLabel(detection);
+
+          const confidence = Number.isFinite(
+            detection.confidence,
+          )
+            ? Math.max(
+                0,
+                Math.min(
+                  1,
+                  detection.confidence,
+                ),
+              )
+            : 0;
 
           return (
             <div
-              key={`${d.track_id}-${d.frame_index}`}
-              className={`absolute border-2 rounded-lg transition-all duration-75 ease-out ${boxStyle.split(" ")[0]} ${boxStyle.split(" ")[2]}`}
+              // Chỉ dùng track_id để React giữ nguyên DOM node.
+              // Không dùng frame_index vì sẽ remount bbox mỗi frame.
+              key={`track-${detection.track_id}`}
+              className={[
+                "absolute rounded-lg border-2",
+                stableProfile
+                  ? "border-solid"
+                  : "border-dashed",
+                "transition-[left,top,width,height]",
+                "duration-75 ease-linear",
+                classes.border,
+                classes.background,
+              ].join(" ")}
               style={{
-                left: `${left}px`,
-                top: `${top}px`,
+                transform: `translate3d(${left}px, ${top}px, 0)`,
                 width: `${width}px`,
                 height: `${height}px`,
+                willChange:
+                  "transform,width,height",
               }}
             >
-              {/* Nhãn dán ID / Tên khách hàng ở góc trên hộp bao */}
               <div
-                className={`absolute -top-6 left-0 px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wide flex items-center gap-1 shadow-sm ${boxStyle.split(" ")[0].replace("border-", "bg-")} text-white`}
+                className={[
+                  "absolute -top-6 left-0",
+                  "flex whitespace-nowrap rounded",
+                  "px-2 py-0.5 text-[10px]",
+                  "font-extrabold uppercase",
+                  "tracking-wide text-white shadow-sm",
+                  classes.label,
+                ].join(" ")}
               >
-                <span>{d.customer_name || d.anonymous_code}</span>
-                <span className="opacity-80">({Math.round(d.confidence * 100)}%)</span>
+                <span>{displayName}</span>
+                {stableProfile && (
+                  <span className="ml-1 opacity-80">
+                    ({Math.round(confidence * 100)}%)
+                  </span>
+                )}
               </div>
             </div>
           );

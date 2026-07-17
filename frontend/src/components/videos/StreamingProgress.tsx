@@ -5,7 +5,8 @@
 
 "use client";
 
-import { Activity, Clock, Percent, Cpu } from "lucide-react";
+// Đã xóa import Percent vì không cần thiết nữa
+import { Activity, Clock, Cpu } from "lucide-react";
 import type { StreamProgressPayload } from "@/services/video_stream.service";
 
 interface StreamingProgressProps {
@@ -32,10 +33,10 @@ export default function StreamingProgress({ progress }: StreamingProgressProps) 
       <div>
         <div className="flex justify-between items-center mb-2">
           <span className="text-xs font-bold text-slate-500 uppercase tracking-wider dark:text-slate-400">
-            Tiến trình phân tích AI
+            Tiến trình phân tích
           </span>
-          <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-            <Percent className="h-4.5 w-4.5" />
+          {/* Đã xóa icon <Percent /> ở đây */}
+          <span className="text-base font-extrabold text-indigo-600 dark:text-indigo-400 flex items-center">
             {progress_percent}%
           </span>
         </div>
