@@ -5,6 +5,8 @@
 
 // ─── Types ──────────────────────────────────────────────
 
+import { http } from "@/lib/http";
+
 export interface SegmentItem {
   id: number;
   segment_name: string;
@@ -30,6 +32,7 @@ export interface SegmentMember {
 }
 
 export interface ClusteringResult {
+  status?: string;
   segments_created: number;
   total_customers_processed: number;
   features_used: string[];
@@ -116,7 +119,7 @@ let mockMembersMap: Record<number, SegmentMember[]> = {
 /**
  * Lấy danh sách tất cả nhóm khách hàng
  */
-export async function getSegments(): Promise<SegmentItem[]> {
+async function getMockSegments(): Promise<SegmentItem[]> {
   return new Promise((resolve) => {
     setTimeout(() => {
       resolve([...mockSegments]);
@@ -127,7 +130,7 @@ export async function getSegments(): Promise<SegmentItem[]> {
 /**
  * Lấy danh sách khách hàng thuộc một nhóm
  */
-export async function getSegmentMembers(
+async function getMockSegmentMembers(
   segmentId: number,
   skip = 0,
   limit = 50
@@ -143,7 +146,7 @@ export async function getSegmentMembers(
 /**
  * Kích hoạt chạy thuật toán phân cụm AI (Giả lập ở Client)
  */
-export async function runClustering(
+async function runMockClustering(
   nClusters = 3
 ): Promise<ClusteringResult> {
   return new Promise((resolve) => {
@@ -219,5 +222,26 @@ export async function runClustering(
         message: `Đã giả lập phân cụm K-Means thành công cho 45 khách hàng thành ${nClusters} nhóm.`
       });
     }, 1500);
+  });
+}
+
+export async function getSegments(): Promise<SegmentItem[]> {
+  return http.get<SegmentItem[]>("/segments/");
+}
+
+export async function getSegmentMembers(
+  segmentId: number,
+  skip = 0,
+  limit = 50
+): Promise<SegmentMember[]> {
+  const members = await http.get<SegmentMember[]>(`/segments/${segmentId}/members`);
+  return members.slice(skip, skip + limit);
+}
+
+export async function runClustering(
+  nClusters = 3
+): Promise<ClusteringResult> {
+  return http.post<ClusteringResult>("/segments/run-clustering", {
+    n_clusters: nClusters,
   });
 }

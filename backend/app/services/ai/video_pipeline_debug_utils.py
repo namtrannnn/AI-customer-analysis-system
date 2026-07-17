@@ -328,6 +328,7 @@ class VideoPipelineDebugMixin:
                 "frame_index": int(frame_index),
                 "track_id": tid,
                 "bbox": bbox,
+                "confidence": float(tp.get("confidence") or 0.0),
                 "observation_count": obs,
                 "profile_id_snapshot": profile_id,
                 "debug_status_snapshot": status,

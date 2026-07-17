@@ -1,7 +1,7 @@
 import os
 import cv2
 import shutil
-from typing import Dict
+from typing import Any, Callable, Dict
 
 from app.services.ai.frame_extractor_service import FrameExtractorService
 from app.services.ai.tracking_service import tracker_service
@@ -66,6 +66,7 @@ class VideoProcessingPipelineService(
         output_face_dir: str = "./pipeline_faces",
         target_fps: float = 1.0,
         debug_video_path: str = None,
+        event_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> Dict:
 
         if os.path.exists(output_face_dir):
@@ -497,7 +498,9 @@ class VideoProcessingPipelineService(
                 f"display_delay={delayed_display_min_frames} frames/{DELAYED_DISPLAY_MIN_OBS} obs"
             )
 
-            for frame_data in frame_result.frames:
+            total_frames = max(int(frame_result.extracted_count or 0), len(frame_result.frames))
+
+            for processed_frame_number, frame_data in enumerate(frame_result.frames, start=1):
                 image = cv2.imread(frame_data.image_path)
 
                 if image is None:
@@ -1864,6 +1867,57 @@ class VideoProcessingPipelineService(
                             max_passes=PROFILE_REFINE_PASSES,
                             realtime_frame_index=current_frame_index,
                         )
+
+                if event_callback:
+                    progress_percent = int(
+                        min(100, round((processed_frame_number / max(total_frames, 1)) * 100))
+                    )
+                    event_callback({
+                        "type": "progress",
+                        "data": {
+                            "current_frame": int(processed_frame_number),
+                            "total_frames": int(total_frames),
+                            "fps": float(target_fps or video_fps or 0),
+                            "progress_percent": progress_percent,
+                        },
+                    })
+
+                    for active_person in tracked_persons:
+                        active_track_id = int(active_person.get("track_id"))
+                        profile_id = track_to_profile.get(active_track_id)
+                        if not profile_id:
+                            continue
+
+                        bbox = active_person.get("bbox") or []
+                        if len(bbox) != 4 or frame_width <= 0 or frame_height <= 0:
+                            continue
+
+                        x1, y1, x2, y2 = [float(v) for v in bbox]
+                        normalized_bbox = [
+                            max(0.0, min(1.0, x1 / frame_width)),
+                            max(0.0, min(1.0, y1 / frame_height)),
+                            max(0.0, min(1.0, x2 / frame_width)),
+                            max(0.0, min(1.0, y2 / frame_height)),
+                        ]
+
+                        best_face = track_best_face.get(active_track_id)
+                        best_sample = track_best_identity_sample.get(active_track_id) or {}
+                        confidence = 0.0
+                        if best_face is not None:
+                            confidence = float(getattr(best_face, "confidence", 0.0) or 0.0)
+                        elif best_sample:
+                            confidence = float(best_sample.get("face_confidence") or 0.0)
+
+                        event_callback({
+                            "type": "detection",
+                            "data": {
+                                "frame_index": int(frame_data.frame_index),
+                                "track_id": active_track_id,
+                                "anonymous_code": str(profile_id),
+                                "confidence": confidence,
+                                "bbox": normalized_bbox,
+                            },
+                        })
 
             # ============================================================
             # EXPORT PROFILES

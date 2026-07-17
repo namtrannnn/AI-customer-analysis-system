@@ -89,7 +89,7 @@ export async function getZoneVisits(zoneId?: number): Promise<ZoneVisit[]> {
 export async function getZoneHeatmap(
   filters: ZoneHeatmapFilters
 ): Promise<ZoneHeatmapResponse> {
-  const params: Record<string, any> = {};
+  const params: Record<string, string> = {};
   if (filters.start_date) params.start_date = filters.start_date;
   if (filters.end_date) params.end_date = filters.end_date;
   return http.get<ZoneHeatmapResponse>("/zones/heatmap", { params });
