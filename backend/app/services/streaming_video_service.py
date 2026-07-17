@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import time
+import numpy as np
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -20,7 +21,6 @@ from app.models.store_zone import StoreZone
 from app.models.visit_detection import VisitDetection
 from app.models.visit_sessions import VisitSession
 from app.models.zone_visit import ZoneVisit
-from app.services.ai.roi_service import roi_service
 from app.services.ai.track_from_detection_service import process_detections_for_tracking
 from app.services.ai.global_customer_identity_service import (
     global_customer_identity_service,
@@ -121,11 +121,13 @@ class StreamingVideoService:
         db = SessionLocal()
         output_face_dir = tempfile.mkdtemp(prefix=f"pipeline_faces_{job_id}_")
         started = time.perf_counter()
-        frame_size = self._read_video_frame_size(job.temp_video_path)
+        frame_width, frame_height, source_fps = self._read_video_metadata(
+            job.temp_video_path
+        )
         context: dict[str, Any] = {
-            "video_fps": 15.0,
-            "frame_width": frame_size[0],
-            "frame_height": frame_size[1],
+            "video_fps": source_fps,
+            "frame_width": frame_width,
+            "frame_height": frame_height,
             "profiles": {},
             "sessions": {},
             "session_bounds": {},
@@ -209,18 +211,71 @@ class StreamingVideoService:
         progress_percent = int(round(float(event.get("progress_percent") or 0.0)))
         processing_fps = float(event.get("processing_fps") or 0.0)
 
+        event_source_fps = float(
+            event.get("source_fps")
+            or event.get("video_fps")
+            or context.get("video_fps")
+            or 25.0
+        )
+        if event_source_fps <= 0:
+            event_source_fps = 25.0
+
+        event_source_frame_index = int(
+            event.get("source_frame_index")
+            or event.get("frame_index")
+            or 0
+        )
+        event_source_timestamp_seconds = event.get(
+            "source_timestamp_seconds"
+        )
+        if event_source_timestamp_seconds is None:
+            event_source_timestamp_seconds = (
+                float(event_source_frame_index) / event_source_fps
+            )
+
+        # Progress phải mang timestamp video nguồn ngay cả khi frame không có người.
+        # Nếu chỉ cập nhật timestamp qua detection, frontend sẽ pause ở các đoạn
+        # không có người hoặc detection đang TEMP/PENDING.
         processing_job_manager.update_progress(job_id, {
             "current_frame": processed_frames,
             "total_frames": total_frames,
             "fps": processing_fps,
             "progress_percent": min(100, max(0, progress_percent)),
+            "source_frame_index": event_source_frame_index,
+            "source_timestamp_seconds": max(
+                0.0,
+                float(event_source_timestamp_seconds),
+            ),
+            "source_fps": event_source_fps,
         })
+        if event_source_fps > 0:
+            context["video_fps"] = event_source_fps
 
         for person in event.get("persons") or []:
-            # BE-04: Mỗi person trong frame được normalize thành detection event cho FE.
+            # Dùng frame/timestamp của VIDEO NGUỒN, không dùng processed_frames.
             bbox = self._normalize_stream_bbox(person.get("bbox") or [], context)
+
+            source_frame_index = int(
+                person.get("source_frame_index")
+                or person.get("frame_index")
+                or event.get("source_frame_index")
+                or event.get("frame_index")
+                or 0
+            )
+
+            source_timestamp_seconds = person.get("source_timestamp_seconds")
+            if source_timestamp_seconds is None:
+                source_timestamp_seconds = event.get("source_timestamp_seconds")
+            if source_timestamp_seconds is None:
+                source_timestamp_seconds = (
+                    float(source_frame_index) / max(event_source_fps, 1.0)
+                )
+
             data = {
-                "frame_index": int(person.get("frame_index") or event.get("frame_index") or 0),
+                "frame_index": source_frame_index,
+                "source_frame_index": source_frame_index,
+                "source_timestamp_seconds": max(0.0, float(source_timestamp_seconds)),
+                "source_fps": event_source_fps,
                 "track_id": int(person.get("track_id") or -1),
                 "anonymous_code": person.get("anonymous_code"),
                 "confidence": float(person.get("confidence") or 0.0),
@@ -230,12 +285,18 @@ class StreamingVideoService:
             if enriched:
                 processing_job_manager.publish(job_id, {"type": "detection", "data": enriched})
 
-    def _read_video_frame_size(self, video_path: str) -> tuple[int, int]:
+    def _read_video_metadata(
+        self,
+        video_path: str,
+    ) -> tuple[int, int, float]:
         cap = cv2.VideoCapture(video_path)
         try:
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH) or 0)
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT) or 0)
-            return width, height
+            fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+            if fps <= 0 or not np.isfinite(fps):
+                fps = 25.0
+            return width, height, fps
         finally:
             cap.release()
 
@@ -281,10 +342,19 @@ class StreamingVideoService:
 
         track_id = int(data.get("track_id") or 0)
         frame_index = int(data.get("frame_index") or 0)
+        source_frame_index = int(data.get("source_frame_index") or frame_index)
+        source_timestamp_seconds = max(
+            0.0,
+            float(data.get("source_timestamp_seconds") or 0.0),
+        )
+        source_fps = max(1.0, float(data.get("source_fps") or 25.0))
         confidence = float(data.get("confidence") or 0.0)
         bbox = data.get("bbox") or []
         context["realtime_detections"].append({
             "frame_index": frame_index,
+            "source_frame_index": source_frame_index,
+            "source_timestamp_seconds": source_timestamp_seconds,
+            "source_fps": source_fps,
             "track_id": track_id,
             "anonymous_code": str(anonymous_code),
             "confidence": confidence,
@@ -295,6 +365,9 @@ class StreamingVideoService:
         # bằng P_000X vì P_000X reset ở mỗi video và có thể lấy nhầm avatar DB.
         return {
             "frame_index": frame_index,
+            "source_frame_index": source_frame_index,
+            "source_timestamp_seconds": source_timestamp_seconds,
+            "source_fps": source_fps,
             "track_id": track_id,
             "anonymous_code": str(anonymous_code),
             "session_profile_id": str(anonymous_code),
@@ -456,7 +529,58 @@ class StreamingVideoService:
                 job.job_id,
             )
 
+
         db.commit()
+
+        # Phát mapping cuối cho frontend trước khi job chuyển sang complete.
+        # Nhiều track/P_id online có thể cùng thuộc một PersonProfile toàn cục.
+        session_profile_mapping: dict[str, dict[str, Any]] = {}
+        track_identity_mapping: dict[str, dict[str, Any]] = {}
+
+        for session_pid, result in identity_by_session.items():
+            person = db.get(PersonProfile, int(result.person_profile_id))
+            if person is None:
+                continue
+
+            identity_payload = {
+                "session_profile_id": session_pid,
+                "person_profile_id": int(person.id),
+                "anonymous_code": str(person.anonymous_code),
+                "customer_type": str(result.customer_type),
+                "total_visits": int(person.total_visits or 0),
+                "matched_similarity": float(result.matched_similarity or 0.0),
+                "customer_id": None,
+                "customer_name": None,
+                "current_video_avatar": None,
+            }
+            session_profile_mapping[session_pid] = identity_payload
+
+        for track_id, session_pid in final_track_to_profile.items():
+            identity_payload = session_profile_mapping.get(str(session_pid))
+            if identity_payload is None:
+                continue
+            track_identity_mapping[str(int(track_id))] = {
+                **identity_payload,
+                "session_profile_id": str(session_pid),
+            }
+
+        processing_job_manager.publish(
+            job.job_id,
+            {
+                "type": "global_identity_result",
+                "data": {
+                    "session_profile_mapping": session_profile_mapping,
+                    "track_identity_mapping": track_identity_mapping,
+                    "final_customer_count": len(
+                        {
+                            item["person_profile_id"]
+                            for item in session_profile_mapping.values()
+                        }
+                    ),
+                },
+            },
+        )
+
         self._upload_profile_faces(db, pending_face_uploads)
 
     def _upload_profile_faces(
@@ -692,8 +816,10 @@ class StreamingVideoService:
         )
 
         profile_to_person = {
-            session_profile_id: db.get(PersonProfile, int(person_id))
-            for session_profile_id, person_id in context.get("profiles", {}).items()
+            person.anonymous_code: person
+            for person in db.query(PersonProfile)
+            .filter(PersonProfile.anonymous_code.in_(set(track_to_profile.values())))
+            .all()
         }
 
         for track in movement_result.tracks:
@@ -742,18 +868,6 @@ class StreamingVideoService:
             anonymous_code: db.query(PersonProfile).filter(PersonProfile.id == person_id).first()
             for anonymous_code, person_id in context.get("profiles", {}).items()
         }
-        zones = [
-            {
-                "id": zone.id,
-                "zone_name": zone.zone_name,
-                "zone_type": zone.zone_type,
-                "polygon": zone.polygon or [],
-                "color": zone.color,
-            }
-            for zone in db.query(StoreZone).all()
-            if zone.polygon and len(zone.polygon) >= 3
-        ]
-        zone_states: dict[tuple[int, int], dict[str, Any]] = {}
 
         frame_width = float(context.get("frame_width") or 0)
         frame_height = float(context.get("frame_height") or 0)
@@ -781,53 +895,13 @@ class StreamingVideoService:
                 else:
                     continue
 
-            position_x = max(0.0, min(1.0, position_x))
-            position_y = max(0.0, min(1.0, position_y))
-            tracked_at = self._detected_at(job, int(record.get("frame_index") or 0), context)
-            zone_id = roi_service.find_zone_for_point(position_x, position_y, zones).zone_id if zones else None
-
             db.add(MovementTrack(
                 visit_session_id=session_id,
                 person_profile_id=person.id,
-                zone_id=zone_id,
-                position_x=position_x,
-                position_y=position_y,
-                tracked_at=tracked_at,
-            ))
-
-            state_key = (person.id, session_id)
-            state = zone_states.setdefault(state_key, {
-                "zone_id": None,
-                "enter_time": None,
-                "last_time": tracked_at,
-            })
-            if zone_id != state["zone_id"]:
-                if state["zone_id"] is not None and state["enter_time"] is not None:
-                    leave_time = state["last_time"] or tracked_at
-                    db.add(ZoneVisit(
-                        visit_session_id=session_id,
-                        person_profile_id=person.id,
-                        zone_id=state["zone_id"],
-                        enter_time=state["enter_time"],
-                        leave_time=leave_time,
-                        duration_seconds=max(0, int((leave_time - state["enter_time"]).total_seconds())),
-                    ))
-                state["zone_id"] = zone_id
-                state["enter_time"] = tracked_at if zone_id is not None else None
-            state["last_time"] = tracked_at
-
-        for person_id, session_id in zone_states.keys():
-            state = zone_states[(person_id, session_id)]
-            if state["zone_id"] is None or state["enter_time"] is None:
-                continue
-            leave_time = state["last_time"] or state["enter_time"]
-            db.add(ZoneVisit(
-                visit_session_id=session_id,
-                person_profile_id=person_id,
-                zone_id=state["zone_id"],
-                enter_time=state["enter_time"],
-                leave_time=leave_time,
-                duration_seconds=max(0, int((leave_time - state["enter_time"]).total_seconds())),
+                zone_id=None,
+                position_x=max(0.0, min(1.0, position_x)),
+                position_y=max(0.0, min(1.0, position_y)),
+                tracked_at=self._detected_at(job, int(record.get("frame_index") or 0), context),
             ))
 
     def _build_complete_result(

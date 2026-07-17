@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
-import { Info, ChevronDown, Upload, Monitor } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { Info, Monitor, Upload, ChevronDown } from "lucide-react";
+
 import VideoUploader from "@/components/videos/VideoUploader";
 import VideoPreview from "@/components/videos/VideoPreview";
 import VideoAnalysisResultComponent from "@/components/videos/VideoAnalysisResult";
@@ -9,21 +10,90 @@ import VideoUploadError from "@/components/videos/VideoUploadError";
 import StreamingOverlay from "@/components/videos/StreamingOverlay";
 import StreamingProgress from "@/components/videos/StreamingProgress";
 import LiveDetectionsList from "@/components/videos/LiveDetectionsList";
+
 import {
   validateVideoFile,
   extractVideoMeta,
 } from "@/services/video.service";
+
 import {
   connectJobStream,
-  type StreamProgressPayload,
   type StreamDetectionPayload,
+  type StreamProgressPayload,
 } from "@/services/video_stream.service";
+
 import type {
   UploadStatus,
-  VideoFileMeta,
   VideoAnalysisResult,
   VideoError,
+  VideoFileMeta,
 } from "@/types/video.type";
+
+const STREAM_CONFIG = {
+  normalPlaybackRate: 0.8,
+  slowPlaybackRate: 0.7,
+  emergencyPlaybackRate: 0.5,
+
+  // Chỉ chờ buffer một lần trước khi bắt đầu.
+  startBufferSeconds: 15,
+
+  // Sau khi đã bắt đầu thì không pause nữa; chỉ giảm playbackRate.
+  slowLeadSeconds: 1.2,
+  emergencyLeadSeconds: 0.35,
+
+  bboxLookAheadSeconds: 0.10,
+  interpolationMaxGapSeconds: 0.80,
+  extrapolationMaxSeconds: 0.22,
+  maximumExtrapolationRatio: 1.35,
+  holdLastDetectionSeconds: 1.2,
+
+  // Khi video đang nằm trước detection đầu tiên, cho phép dùng mẫu tương lai
+  // gần nhất để bbox không biến mất lúc playbackRate thay đổi.
+  futureSampleToleranceSeconds: 0.35,
+
+  // Không xóa overlay ngay khi một lần tra timestamp không tìm thấy mẫu.
+  overlayEmptyGraceSeconds: 0.8,
+
+  maxSamplesPerTrack: 2000,
+  overlayUpdateIntervalMs: 33,
+} as const;
+
+type PlaybackState = "waiting" | "playing" | "buffering";
+
+function UploadProgress({ progress }: { progress: number }) {
+  return (
+    <div className="flex flex-col items-center gap-6 py-16">
+      <div className="relative flex h-24 w-24 items-center justify-center">
+        <div className="absolute inset-0 animate-spin rounded-full border-4 border-transparent border-t-violet-500" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600">
+          <Upload className="h-6 w-6 text-white" />
+        </div>
+      </div>
+
+      <div className="text-center">
+        <p className="font-bold text-slate-900 dark:text-slate-100">
+          Đang tải video lên máy chủ...
+        </p>
+        <p className="mt-1 text-sm text-slate-500">
+          Hệ thống đang chuẩn bị luồng phân tích.
+        </p>
+      </div>
+
+      <div className="w-full max-w-sm">
+        <div className="mb-2 flex justify-between text-xs text-slate-500">
+          <span>Tiến độ upload</span>
+          <span className="font-bold text-violet-600">{progress}%</span>
+        </div>
+        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Guide Accordion (Hướng dẫn sử dụng) ──────────────────────────────────────
 function GuideAccordion() {
@@ -196,53 +266,6 @@ function GuideAccordion() {
   );
 }
 
-// ─── Loading progress (Dùng lúc tải tệp video lên) ───────────────────────────
-function UploadProgress({
-  progress,
-}: {
-  progress: number;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-8 py-16 animate-fade-in">
-      <div className="relative flex h-28 w-28 items-center justify-center">
-        <div className="absolute inset-0 animate-spin rounded-full border-[5px] border-transparent border-t-violet-500" />
-        <div
-          className="absolute inset-3 animate-spin rounded-full border-[4px] border-transparent border-t-purple-400"
-          style={{ animationDirection: "reverse", animationDuration: "1.4s" }}
-        />
-        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-purple-600 shadow-xl shadow-violet-500/40">
-          <Upload className="h-6 w-6 text-white" />
-        </div>
-      </div>
-
-      <div className="text-center">
-        <p className="text-lg font-bold text-slate-900 dark:text-slate-100">
-          Đang tải video lên máy chủ...
-        </p>
-        <p className="mt-1.5 text-sm text-slate-500 dark:text-slate-400">
-          Hệ thống đang chuẩn bị tệp cho luồng phân tích thời gian thực.
-        </p>
-      </div>
-
-      <div className="w-full max-w-sm">
-        <div className="mb-2 flex justify-between text-xs text-slate-500 dark:text-slate-400">
-          <span>Tiến độ upload</span>
-          <span className="font-bold text-violet-600 dark:text-violet-400">
-            {progress}%
-          </span>
-        </div>
-        <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Main VideosPage Component ────────────────────────────────────────────────
 export default function VideosPage() {
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [fileMeta, setFileMeta] = useState<VideoFileMeta | null>(null);
@@ -251,48 +274,106 @@ export default function VideosPage() {
   const [result, setResult] = useState<VideoAnalysisResult | null>(null);
   const [error, setError] = useState<VideoError | null>(null);
 
-  // States quản lý dữ liệu luồng xử lý thời gian thực
-  const [streamProgress, setStreamProgress] = useState<StreamProgressPayload | null>(null);
-  const [allDetections, setAllDetections] = useState<StreamDetectionPayload[]>([]);
-  const [currentDetections, setCurrentDetections] = useState<StreamDetectionPayload[]>([]);
-  
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoObjectUrl = useRef<string>("");
-  const disconnectStream = useRef<(() => void) | null>(null);
-  const lastFrameIndex = useRef<number>(-1);
+  const [streamProgress, setStreamProgress] =
+    useState<StreamProgressPayload | null>(null);
+  const [allDetections, setAllDetections] =
+    useState<StreamDetectionPayload[]>([]);
+  const [currentDetections, setCurrentDetections] =
+    useState<StreamDetectionPayload[]>([]);
+  const [playbackState, setPlaybackState] =
+    useState<PlaybackState>("waiting");
 
-  // Tạo và dọn dẹp Object URL từ file video nội bộ
+  // State theo dõi thời gian video
+  const [videoTime, setVideoTime] = useState(0);
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [videoElement, setVideoElement] =
+    useState<HTMLVideoElement | null>(null);
+  const [videoObjectUrl, setVideoObjectUrl] = useState("");
+
+  const disconnectStreamRef = useRef<(() => void) | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+
+  const detectionTimelineRef = useRef<
+    Map<number, StreamDetectionPayload[]>
+  >(new Map());
+
+  const latestAiTimestampRef = useRef(0);
+  const latestAiFrameRef = useRef(0);
+  const totalAiFramesRef = useRef(0);
+  const streamStartedRef = useRef(false);
+  const aiCompletedRef = useRef(false);
+  const pendingResultRef = useRef<VideoAnalysisResult | null>(null);
+  const lastOverlayUpdateMsRef = useRef(0);
+  const lastNonEmptyOverlayRef = useRef<StreamDetectionPayload[]>([]);
+  const lastNonEmptyOverlayAtRef = useRef(0);
+  
+  // Ref để throttle cập nhật UI video time
+  const lastListUpdateMsRef = useRef(0);
+  const firstAppearanceMapRef = useRef<Map<number, number>>(new Map());
+
+  const setVideoNode = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoElement(node);
+  }, []);
+
   useEffect(() => {
-    if (rawFile) {
-      videoObjectUrl.current = URL.createObjectURL(rawFile);
+    if (!rawFile) {
+      setVideoObjectUrl("");
+      return;
     }
-    return () => {
-      if (videoObjectUrl.current) {
-        URL.revokeObjectURL(videoObjectUrl.current);
-        videoObjectUrl.current = "";
-      }
-    };
+
+    const objectUrl = URL.createObjectURL(rawFile);
+    setVideoObjectUrl(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
   }, [rawFile]);
 
-  // Hủy kết nối stream khi đóng component
   useEffect(() => {
     return () => {
-      if (disconnectStream.current) {
-        disconnectStream.current();
+      disconnectStreamRef.current?.();
+
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
       }
     };
   }, []);
 
-  // Xử lý khi chọn file video mới
+  const resetStreaming = useCallback(() => {
+    detectionTimelineRef.current.clear();
+    latestAiTimestampRef.current = 0;
+    latestAiFrameRef.current = 0;
+    totalAiFramesRef.current = 0;
+    streamStartedRef.current = false;
+    aiCompletedRef.current = false;
+    pendingResultRef.current = null;
+    lastOverlayUpdateMsRef.current = 0;
+    lastNonEmptyOverlayRef.current = [];
+    lastNonEmptyOverlayAtRef.current = 0;
+    
+    lastListUpdateMsRef.current = 0;
+    setVideoTime(0);
+
+    firstAppearanceMapRef.current.clear();
+
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+  }, []);
+
   const handleFileSelected = useCallback(async (file: File) => {
+    setStatus("validating");
     setError(null);
     setResult(null);
-    setStatus("validating");
 
     const validationError = validateVideoFile(file);
     if (validationError) {
       setError({
-        type: file.size > 50 * 1024 * 1024 ? "file_too_large" : "invalid_format",
+        type:
+          file.size > 50 * 1024 * 1024
+            ? "file_too_large"
+            : "invalid_format",
         message: validationError,
       });
       setStatus("error");
@@ -300,111 +381,592 @@ export default function VideosPage() {
     }
 
     try {
-      const meta = await extractVideoMeta(file);
-      setFileMeta(meta);
+      const metadata = await extractVideoMeta(file);
       setRawFile(file);
+      setFileMeta(metadata);
       setStatus("ready");
     } catch {
       setError({
         type: "upload_failed",
-        message: "Không thể đọc thông tin video. Vui lòng thử file khác.",
+        message: "Không thể đọc thông tin video.",
       });
       setStatus("error");
     }
   }, []);
 
-  // Bắt đầu upload và stream xử lý thời gian thực
-  const handleUpload = useCallback(async () => {
-    if (!fileMeta || !rawFile) return;
-    
-    try {
-      setStatus("uploading");
-      setUploadProgress(0);
+  const startVideoWhenBuffered = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || streamStartedRef.current) return;
 
-      // Bước 1: Giả lập quá trình upload video ban đầu (chạy nhanh lên 100%)
-      let progress = 0;
-      const uploadInterval = setInterval(() => {
-        progress += 10;
-        setUploadProgress(progress);
-        if (progress >= 100) {
-          clearInterval(uploadInterval);
-          
-          // Bước 2: Chuyển sang trạng thái "analyzing" và khởi động luồng WebSocket/Simulator
-          setStatus("analyzing");
-          
-          // Phát video cục bộ đồng thời
-          setTimeout(() => {
-            if (videoRef.current) {
-              videoRef.current.currentTime = 0;
-              videoRef.current.play().catch(() => {
-                console.log("Auto-play bị chặn, chờ tương tác người dùng.");
-              });
-            }
-          }, 100);
+    const leadSeconds = latestAiTimestampRef.current - video.currentTime;
+    if (leadSeconds < STREAM_CONFIG.startBufferSeconds) {
+      setPlaybackState("waiting");
+      return;
+    }
 
-          // Tạo kết nối WebSocket / Simulator
-          disconnectStream.current = connectJobStream(
-            rawFile,
-            fileMeta.duration,
-            {
-              onProgress: (payload) => {
-                setStreamProgress(payload);
-                
-                // Đồng bộ mốc thời gian phát video với tiến độ AI đang phân tích
-                if (videoRef.current && fileMeta.duration > 0) {
-                  const targetTime = (payload.current_frame / payload.total_frames) * fileMeta.duration;
-                  videoRef.current.currentTime = targetTime;
-                }
-              },
-              onDetection: (det) => {
-                // Thêm vào danh sách live feed tổng hợp (bảng bên phải)
-                setAllDetections((prev) => {
-                  const exists = prev.some(
-                    (p) => p.anonymous_code === det.anonymous_code && p.frame_index === det.frame_index
-                  );
-                  return exists ? prev : [...prev, det];
-                });
+    streamStartedRef.current = true;
+    video.pause();
+    video.currentTime = 0;
+    video.playbackRate = STREAM_CONFIG.normalPlaybackRate;
+    setPlaybackState("playing");
 
-                // Cập nhật danh sách vẽ khung của khung hình hiện tại (canvas overlay)
-                if (det.frame_index !== lastFrameIndex.current) {
-                  lastFrameIndex.current = det.frame_index;
-                  setCurrentDetections([det]);
-                } else {
-                  setCurrentDetections((prev) => [...prev, det]);
-                }
-              },
-              onComplete: (analysisResult) => {
-                setResult(analysisResult);
-                setStatus("done");
-              },
-              onError: (errMsg) => {
-                setError({
-                  type: "analysis_failed",
-                  message: errMsg,
-                });
-                setStatus("error");
-              }
-            }
+    void video.play().catch(() => {
+      streamStartedRef.current = false;
+      setPlaybackState("waiting");
+    });
+  }, []);
+
+  const interpolateBBox = useCallback((
+    first: StreamDetectionPayload,
+    second: StreamDetectionPayload,
+    timeSeconds: number,
+  ): StreamDetectionPayload => {
+    const firstTime = first.source_timestamp_seconds;
+    const secondTime = second.source_timestamp_seconds;
+    const duration = secondTime - firstTime;
+
+    if (
+      duration <= 0 ||
+      duration > STREAM_CONFIG.interpolationMaxGapSeconds
+    ) {
+      return first;
+    }
+
+    const linearRatio = Math.max(
+      0,
+      Math.min(1, (timeSeconds - firstTime) / duration),
+    );
+
+    // Linear interpolation bám người sát hơn smoothstep.
+    const bbox = first.bbox.map(
+      (value, index) =>
+        value +
+        (second.bbox[index] - value) * linearRatio,
+    ) as [number, number, number, number];
+
+    return {
+      ...first,
+      bbox,
+      confidence:
+        first.confidence +
+        (second.confidence - first.confidence) * linearRatio,
+    };
+  }, []);
+
+  const extrapolateBBox = useCallback((
+    previous: StreamDetectionPayload,
+    latest: StreamDetectionPayload,
+    timeSeconds: number,
+  ): StreamDetectionPayload => {
+    const sampleDuration =
+      latest.source_timestamp_seconds -
+      previous.source_timestamp_seconds;
+
+    const aheadSeconds =
+      timeSeconds - latest.source_timestamp_seconds;
+
+    if (
+      sampleDuration <= 0 ||
+      aheadSeconds <= 0 ||
+      aheadSeconds > STREAM_CONFIG.extrapolationMaxSeconds
+    ) {
+      return latest;
+    }
+
+    const ratio = Math.min(
+      STREAM_CONFIG.maximumExtrapolationRatio,
+      aheadSeconds / sampleDuration,
+    );
+
+    const bbox = latest.bbox.map((value, index) => {
+      const velocity =
+        latest.bbox[index] - previous.bbox[index];
+
+      return Math.max(
+        0,
+        Math.min(1, value + velocity * ratio),
+      );
+    }) as [number, number, number, number];
+
+    return {
+      ...latest,
+      bbox,
+    };
+  }, []);
+
+  const findDetectionsForTime = useCallback((
+    videoTimeSeconds: number,
+  ): StreamDetectionPayload[] => {
+    const targetTime =
+      videoTimeSeconds + STREAM_CONFIG.bboxLookAheadSeconds;
+
+    const aiEdgeTime = latestAiTimestampRef.current;
+
+    const visible: StreamDetectionPayload[] = [];
+
+    for (const samples of detectionTimelineRef.current.values()) {
+      if (samples.length === 0) continue;
+
+      let left = 0;
+      let right = samples.length - 1;
+      let previousIndex = -1;
+
+      while (left <= right) {
+        const middle = Math.floor((left + right) / 2);
+
+        if (
+          samples[middle].source_timestamp_seconds <= targetTime
+        ) {
+          previousIndex = middle;
+          left = middle + 1;
+        } else {
+          right = middle - 1;
+        }
+      }
+
+      // Video có thể đang chạy chậm hơn AI và nằm trước detection đầu tiên.
+      // Dùng mẫu tương lai gần nhất thay vì trả [] và làm mất bbox.
+      if (previousIndex < 0) {
+        const first = samples[0];
+        const untilFirst =
+          first.source_timestamp_seconds - targetTime;
+
+        if (
+          untilFirst >= 0 &&
+          untilFirst <=
+            STREAM_CONFIG.futureSampleToleranceSeconds
+        ) {
+          visible.push(first);
+        }
+
+        continue;
+      }
+
+      const previous = samples[previousIndex];
+      const next = samples[previousIndex + 1];
+
+      if (next) {
+        const gap =
+          next.source_timestamp_seconds -
+          previous.source_timestamp_seconds;
+
+        if (
+          gap > 0 &&
+          gap <= STREAM_CONFIG.interpolationMaxGapSeconds
+        ) {
+          visible.push(
+            interpolateBBox(previous, next, targetTime),
+          );
+        } else {
+          // Khoảng detection quá xa: giữ mẫu gần nhất, không xóa bbox.
+          const distanceToPrevious = Math.abs(
+            targetTime - previous.source_timestamp_seconds,
+          );
+          const distanceToNext = Math.abs(
+            next.source_timestamp_seconds - targetTime,
+          );
+
+          visible.push(
+            distanceToNext < distanceToPrevious
+              ? next
+              : previous,
           );
         }
-      }, 150);
 
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Có lỗi xảy ra";
-      setError({
-        type: "analysis_failed",
-        message: msg,
-      });
-      setStatus("error");
+        continue;
+      }
+
+      const age =
+        targetTime - previous.source_timestamp_seconds;
+
+      // Kiểm tra xem vị trí mẫu này có đang nằm sát với mốc cuối AI phân tích không
+      const isTrackAtAiEdge = (aiEdgeTime - previous.source_timestamp_seconds) <= 1.5;
+
+      if (
+        previousIndex > 0 &&
+        age > 0 &&
+        age <= STREAM_CONFIG.extrapolationMaxSeconds
+      ) {
+        visible.push(
+          extrapolateBBox(
+            samples[previousIndex - 1],
+            previous,
+            targetTime,
+          ),
+        );
+      } else if (
+        age <= STREAM_CONFIG.holdLastDetectionSeconds ||
+        isTrackAtAiEdge
+      ) {
+        visible.push(previous);
+      }
     }
-  }, [fileMeta, rawFile]);
 
-  // Reset toàn bộ trạng thái để làm lại từ đầu
+    return visible;
+  }, [interpolateBBox, extrapolateBBox]);
+
+  useEffect(() => {
+    if (status !== "analyzing" || !fileMeta) return;
+
+    const tick = () => {
+      const video = videoRef.current;
+
+      if (video) {
+        const nowMs = performance.now();
+
+        // Đồng bộ thời gian video để cập nhật UI danh sách/tiến độ
+        if (nowMs - lastListUpdateMsRef.current >= 250) {
+          lastListUpdateMsRef.current = nowMs;
+          setVideoTime(video.currentTime);
+        }
+
+        if (
+          nowMs - lastOverlayUpdateMsRef.current >=
+          STREAM_CONFIG.overlayUpdateIntervalMs
+        ) {
+          lastOverlayUpdateMsRef.current = nowMs;
+          const nextOverlay =
+            findDetectionsForTime(video.currentTime);
+
+          if (nextOverlay.length > 0) {
+            lastNonEmptyOverlayRef.current = nextOverlay;
+            lastNonEmptyOverlayAtRef.current = nowMs;
+            setCurrentDetections(nextOverlay);
+          } else {
+            const emptyDurationMs =
+              nowMs - lastNonEmptyOverlayAtRef.current;
+
+            if (
+              lastNonEmptyOverlayRef.current.length > 0 &&
+              emptyDurationMs <=
+                STREAM_CONFIG.overlayEmptyGraceSeconds * 1000
+            ) {
+              // Giữ overlay trước đó trong khoảng ngắn khi timestamp/event
+              // bị thưa. Không để thay đổi playbackRate làm bbox biến mất.
+              setCurrentDetections(
+                lastNonEmptyOverlayRef.current,
+              );
+            } else {
+              setCurrentDetections([]);
+            }
+          }
+        }
+
+        const aiLeadSeconds =
+          latestAiTimestampRef.current - video.currentTime;
+
+        if (
+          !aiCompletedRef.current &&
+          streamStartedRef.current &&
+          !video.ended
+        ) {
+          let targetRate: number = STREAM_CONFIG.normalPlaybackRate;
+
+          if (aiLeadSeconds <= STREAM_CONFIG.emergencyLeadSeconds) {
+            targetRate = STREAM_CONFIG.emergencyPlaybackRate;
+          } else if (aiLeadSeconds <= STREAM_CONFIG.slowLeadSeconds) {
+            targetRate = STREAM_CONFIG.slowPlaybackRate;
+          }
+
+          if (Math.abs(video.playbackRate - targetRate) > 0.01) {
+            video.playbackRate = targetRate;
+          }
+
+          // Sau khi bắt đầu tuyệt đối không pause vì buffer.
+          if (video.paused) {
+            void video.play().catch(() => undefined);
+          }
+
+          setPlaybackState("playing");
+        }
+      }
+
+      animationFrameRef.current = requestAnimationFrame(tick);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [status, fileMeta, findDetectionsForTime]);
+
+  const finalizeAfterPlayback = useCallback(() => {
+    const completedResult = pendingResultRef.current;
+    if (!completedResult) return;
+
+    setCurrentDetections([]);
+    setResult(completedResult);
+    setStatus("done");
+  }, []);
+
+  const handleUpload = useCallback(async () => {
+    if (!rawFile || !fileMeta) return;
+
+    disconnectStreamRef.current?.();
+    resetStreaming();
+
+    setStreamProgress(null);
+    setAllDetections([]);
+    setCurrentDetections([]);
+    setPlaybackState("waiting");
+    setUploadProgress(0);
+    setStatus("uploading");
+
+    let simulatedUpload = 0;
+
+    const uploadTimer = window.setInterval(() => {
+      simulatedUpload = Math.min(100, simulatedUpload + 10);
+      setUploadProgress(simulatedUpload);
+
+      if (simulatedUpload < 100) return;
+
+      window.clearInterval(uploadTimer);
+      setStatus("analyzing");
+
+      disconnectStreamRef.current = connectJobStream(
+        rawFile,
+        fileMeta.duration,
+        {
+          onProgress: (progress) => {
+            latestAiFrameRef.current = Math.max(
+              latestAiFrameRef.current,
+              progress.current_frame,
+            );
+            totalAiFramesRef.current = Math.max(
+              totalAiFramesRef.current,
+              progress.total_frames,
+            );
+
+            const progressTimestamp = Number(
+              progress.source_timestamp_seconds,
+            );
+
+            if (
+              Number.isFinite(progressTimestamp) &&
+              progressTimestamp >= 0
+            ) {
+              latestAiTimestampRef.current = Math.max(
+                latestAiTimestampRef.current,
+                progressTimestamp,
+              );
+            }
+
+            setStreamProgress(progress);
+            startVideoWhenBuffered();
+          },
+
+          onDetection: (detection) => {
+            const timestamp = Number(detection.source_timestamp_seconds);
+            if (!Number.isFinite(timestamp) || timestamp < 0) return;
+
+            latestAiTimestampRef.current = Math.max(
+              latestAiTimestampRef.current,
+              timestamp,
+            );
+
+            // Lưu lại giây đầu tiên người này xuất hiện để hiện UI ngay lập tức
+            if (!firstAppearanceMapRef.current.has(detection.track_id)) {
+              firstAppearanceMapRef.current.set(detection.track_id, timestamp);
+            }
+
+            const samples =
+              detectionTimelineRef.current.get(detection.track_id) ?? [];
+
+            const existingSampleIndex = samples.findIndex(
+              (sample) =>
+                Math.abs(sample.source_timestamp_seconds - timestamp) < 0.0001,
+            );
+
+            if (existingSampleIndex >= 0) {
+              samples[existingSampleIndex] = {
+                ...samples[existingSampleIndex],
+                ...detection,
+              };
+            } else {
+              samples.push(detection);
+              samples.sort(
+                (a, b) =>
+                  a.source_timestamp_seconds - b.source_timestamp_seconds,
+              );
+            }
+
+            if (samples.length > STREAM_CONFIG.maxSamplesPerTrack) {
+              samples.splice(0, samples.length - STREAM_CONFIG.maxSamplesPerTrack);
+            }
+
+            detectionTimelineRef.current.set(detection.track_id, samples);
+
+            setAllDetections((previous) => {
+              // Trong giai đoạn online, track_id là khóa ổn định nhất.
+              // P_id có thể bị đổi/gộp nên không dùng làm khóa tích lũy.
+              const existingIndex = previous.findIndex(
+                (item) => item.track_id === detection.track_id,
+              );
+
+              if (existingIndex < 0) {
+                return [...previous, detection];
+              }
+
+              const existing = previous[existingIndex];
+              const normalizedType = String(
+                detection.customer_type ?? "",
+              )
+                .trim()
+                .toLowerCase();
+
+              const isIdentityUpdate =
+                detection.person_profile_id != null ||
+                normalizedType === "returning" ||
+                normalizedType === "returning_customer";
+
+              if (
+                detection.frame_index < existing.frame_index &&
+                !isIdentityUpdate
+              ) {
+                return previous;
+              }
+
+              const next = [...previous];
+              next[existingIndex] = {
+                ...existing,
+                ...detection,
+                current_video_avatar:
+                  detection.current_video_avatar ||
+                  existing.current_video_avatar ||
+                  null,
+              };
+
+              return next;
+            });
+          },
+
+          onGlobalIdentity: (identityPayload) => {
+            const trackMapping =
+              identityPayload.track_identity_mapping ?? {};
+
+            // Gom tất cả raw track theo PersonProfile toàn cục.
+            // Một người dù có nhiều track/P_id online chỉ còn đúng một card.
+            setAllDetections((previous) => {
+              const latestByTrack = new Map<number, StreamDetectionPayload>();
+
+              for (const item of previous) {
+                const current = latestByTrack.get(item.track_id);
+                if (
+                  !current ||
+                  item.frame_index >= current.frame_index
+                ) {
+                  latestByTrack.set(item.track_id, item);
+                }
+              }
+
+              const grouped = new Map<number, StreamDetectionPayload>();
+
+              for (const [trackIdText, identity] of Object.entries(
+                trackMapping,
+              )) {
+                const trackId = Number(trackIdText);
+                if (!Number.isFinite(trackId)) continue;
+
+                const previousDetection = latestByTrack.get(trackId);
+                if (!previousDetection) continue;
+
+                const updated: StreamDetectionPayload = {
+                  ...previousDetection,
+                  track_id: trackId,
+                  session_profile_id:
+                    identity.session_profile_id ??
+                    previousDetection.session_profile_id,
+                  person_profile_id: identity.person_profile_id,
+                  anonymous_code: identity.anonymous_code,
+                  customer_type: identity.customer_type,
+                  total_visits: identity.total_visits,
+                  customer_id:
+                    identity.customer_id ??
+                    previousDetection.customer_id ??
+                    null,
+                  customer_name:
+                    identity.customer_name ??
+                    previousDetection.customer_name ??
+                    null,
+                  current_video_avatar:
+                    identity.current_video_avatar ??
+                    previousDetection.current_video_avatar ??
+                    null,
+                };
+
+                const existing = grouped.get(
+                  identity.person_profile_id,
+                );
+
+                if (
+                  !existing ||
+                  updated.frame_index >= existing.frame_index
+                ) {
+                  grouped.set(identity.person_profile_id, updated);
+                }
+              }
+
+              // Nếu backend chưa map được track nào thì giữ danh sách cũ.
+              if (grouped.size === 0) {
+                return previous;
+              }
+
+              return Array.from(grouped.values());
+            });
+          },
+
+          onComplete: (analysisResult) => {
+            aiCompletedRef.current = true;
+            pendingResultRef.current = analysisResult;
+
+            const video = videoRef.current;
+
+            if (
+              !video ||
+              video.ended ||
+              video.currentTime >= video.duration - 0.1
+            ) {
+              finalizeAfterPlayback();
+              return;
+            }
+
+            video.playbackRate = STREAM_CONFIG.normalPlaybackRate;
+
+            if (video.paused) {
+              setPlaybackState("playing");
+              void video.play().catch(() => undefined);
+            }
+          },
+
+          onError: (message) => {
+            setError({
+              type: "analysis_failed",
+              message,
+            });
+            setStatus("error");
+          },
+        },
+      );
+    }, 150);
+  }, [
+    rawFile,
+    fileMeta,
+    resetStreaming,
+    startVideoWhenBuffered,
+    finalizeAfterPlayback,
+  ]);
+
   const handleReset = useCallback(() => {
-    if (disconnectStream.current) {
-      disconnectStream.current();
-      disconnectStream.current = null;
-    }
+    disconnectStreamRef.current?.();
+    disconnectStreamRef.current = null;
+
+    videoRef.current?.pause();
+    resetStreaming();
+
     setStatus("idle");
     setFileMeta(null);
     setRawFile(null);
@@ -414,83 +976,141 @@ export default function VideosPage() {
     setStreamProgress(null);
     setAllDetections([]);
     setCurrentDetections([]);
-    lastFrameIndex.current = -1;
-  }, []);
+    setPlaybackState("waiting");
+  }, [resetStreaming]);
+
+  /// 1. Chỉ đưa người vào danh sách khi video đã phát tới timestamp đầu tiên của họ
+  const visibleDetections = useMemo(() => {
+    return allDetections.filter((detection) => {
+      // Lấy thời điểm xuất hiện đầu tiên của track này
+      const firstAppearance = firstAppearanceMapRef.current.get(detection.track_id);
+      
+      // Nếu chưa có trong map (lỗi đồng bộ hiếm), fallback về timestamp hiện tại
+      const appearTime = firstAppearance !== undefined 
+        ? firstAppearance 
+        : detection.source_timestamp_seconds;
+        
+      return appearTime <= videoTime;
+    });
+  }, [allDetections, videoTime]);
+
+  // 2. Chỉnh % tiến trình phân tích và số frame dựa theo độ dài video thực tế
+  const displayStreamProgress = useMemo(() => {
+    if (!streamProgress || !fileMeta?.duration) return streamProgress;
+    
+    // Tính tỷ lệ % dựa trên thời gian video đã phát / tổng thời lượng
+    const ratio = Math.min(1, Math.max(0, videoTime / fileMeta.duration));
+    const progress_percent = Math.round(ratio * 100);
+    
+    // Đồng bộ số frame đã xử lý hiển thị tương ứng với video
+    const current_frame = Math.round(ratio * streamProgress.total_frames);
+
+    return {
+      ...streamProgress,
+      progress_percent,
+      current_frame,
+    };
+  }, [streamProgress, videoTime, fileMeta]);
 
   return (
     <>
-      {/* ── Page Header (Tiêu đề trang) ── */}
       <div className="mb-6">
         <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-indigo-100 px-3 py-1 text-xs font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
-          <span className="h-2 w-2 rounded-full bg-indigo-500 animate-ping" />
+          <span className="h-2 w-2 animate-ping rounded-full bg-indigo-500" />
           Nhận diện & Theo dõi Realtime
         </div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-100">
+
+        <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100">
           Phân tích Video Thời gian thực
         </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-350">
-          Trực quan hóa hộp nhận diện (Bounding Box) và danh sách khách hàng cập nhật trực tiếp (Live Feed).
-        </p>
       </div>
 
-      {/* ── 1. Kết quả phân tích (Done State) ── */}
       {status === "done" && result && (
-        <VideoAnalysisResultComponent result={result} onReset={handleReset} />
+        <VideoAnalysisResultComponent
+          result={result}
+          onReset={handleReset}
+        />
       )}
 
-      {/* ── 2. Đang phân tích Stream (Analyzing State) ── */}
       {status === "analyzing" && fileMeta && rawFile && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
-          {/* Cột trái: Trình phát video cục bộ và tiến độ xử lý */}
-          <div className="lg:col-span-2 space-y-4">
-            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-black shadow-lg relative aspect-video dark:border-slate-800">
-              <video
-                ref={videoRef}
-                src={videoObjectUrl.current}
-                className="h-full w-full object-contain"
-                muted
-                playsInline
-              />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="relative aspect-video overflow-hidden rounded-2xl border border-slate-200 bg-black shadow-lg">
+              {videoObjectUrl && (
+                <video
+                  ref={setVideoNode}
+                  src={videoObjectUrl}
+                  className="h-full w-full object-contain"
+                  muted
+                  playsInline
+                  preload="auto"
+                  onLoadedMetadata={(event) => {
+                    const video = event.currentTarget;
+                    video.pause();
+                    video.currentTime = 0;
+                    video.playbackRate = STREAM_CONFIG.normalPlaybackRate;
+                  }}
+                  onEnded={finalizeAfterPlayback}
+                />
+              )}
 
-              {/* Bounding Box Canvas Overlay vẽ đè lên trình phát */}
               <StreamingOverlay
                 detections={currentDetections}
-                videoElement={videoRef.current}
+                videoElement={videoElement}
               />
+
+              {playbackState === "waiting" && (
+                <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/55">
+                  <div className="text-center text-white">
+                    <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+                    <p className="text-sm font-bold">
+                      Đang chờ AI...
+                    </p>
+                    <p className="mt-1 text-xs text-white/75">
+                      Video chỉ chờ một lần trước khi bắt đầu phát.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Thanh tiến độ FPS/ETA */}
-            {streamProgress && <StreamingProgress progress={streamProgress} />}
+            {displayStreamProgress && (
+              <StreamingProgress progress={displayStreamProgress} />
+            )}
           </div>
 
-          {/* Cột phải: Feed nhận diện khách hàng nhảy trực tiếp */}
-          <div className="lg:col-span-1">
-            <LiveDetectionsList detections={allDetections} />
+          <div>
+            <LiveDetectionsList detections={visibleDetections} />
           </div>
         </div>
       )}
 
-      {/* ── 3. Trạng thái tải lên/Chọn file (Idle/Uploading/Ready/Error) ── */}
       {status !== "done" && status !== "analyzing" && (
         <div className="space-y-4">
-          <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800 dark:ring-slate-700/60">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-slate-200/70 dark:bg-slate-800">
             <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-500 to-indigo-500" />
+
             <div className="p-6">
               {status === "uploading" ? (
                 <UploadProgress progress={uploadProgress} />
               ) : status === "error" && error ? (
-                <VideoUploadError error={error} onRetry={handleReset} />
-              ) : fileMeta ? (
+                <VideoUploadError
+                  error={error}
+                  onRetry={handleReset}
+                />
+              ) : fileMeta && rawFile ? (
                 <div className="mx-auto max-w-2xl">
                   <VideoPreview
                     meta={fileMeta}
-                    file={rawFile!}
+                    file={rawFile}
                     onRemove={handleReset}
                     disabled={status === "validating"}
                   />
+
                   <button
+                    type="button"
                     onClick={handleUpload}
-                    className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3.5 text-base font-bold text-white shadow-lg shadow-indigo-500/25 transition hover:from-indigo-700 hover:to-violet-700 active:scale-[0.98]"
+                    className="mt-5 flex w-full items-center justify-center gap-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-3.5 font-bold text-white"
                   >
                     <Monitor className="h-5 w-5" />
                     Bắt đầu phân tích AI trực tiếp
@@ -505,7 +1125,7 @@ export default function VideosPage() {
             </div>
           </div>
 
-          <GuideAccordion />
+          <GuideAccordion/>
         </div>
       )}
     </>

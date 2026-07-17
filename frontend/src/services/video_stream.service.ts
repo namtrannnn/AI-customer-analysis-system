@@ -1,3 +1,6 @@
+/**
+ * Service xử lý Luồng Stream Video (Realtime Streaming)
+ */
 import { http } from "@/lib/http";
 import type { DetectedPerson, VideoAnalysisResult } from "@/types/video.type";
 
@@ -10,14 +13,25 @@ export interface StreamProgressPayload {
   total_frames: number;
   fps: number;
   progress_percent: number;
+
+  // Timestamp/frame của video nguồn, cập nhật ở mọi frame AI,
+  // kể cả khi frame không có detection.
+  source_frame_index?: number;
+  source_timestamp_seconds?: number;
+  source_fps?: number;
 }
 
 // Kiểu dữ liệu nhận diện khuôn mặt từng frame từ Stream
 export interface StreamDetectionPayload {
   track_id: number;
   frame_index: number;
+  source_frame_index?: number;
+  source_timestamp_seconds: number;
+  source_fps?: number;
   bbox: [number, number, number, number];
   confidence: number;
+
+  identity_status?: string | null;
 
   session_profile_id?: string | null;
   person_profile_id?: number | null;
@@ -56,11 +70,13 @@ export interface GlobalIdentityResultPayload {
       session_profile_id?: string;
     }
   >;
+  final_customer_count?: number;
 }
 
 interface StreamCallbacks {
   onProgress: (progress: StreamProgressPayload) => void;
   onDetection: (detection: StreamDetectionPayload) => void;
+  onGlobalIdentity?: (payload: GlobalIdentityResultPayload) => void;
   onComplete: (result: VideoAnalysisResult) => void;
   onError: (error: string) => void;
 }
@@ -133,6 +149,8 @@ export function connectJobStream(
               const identityData = payload.data ?? payload;
               const trackMapping =
                 identityData.track_identity_mapping ?? {};
+
+              callbacks.onGlobalIdentity?.(identityData);
 
               Object.entries(trackMapping).forEach(
                 ([trackIdText, identity]) => {
@@ -300,6 +318,9 @@ function connectMockStream(
 
       callbacks.onDetection({
         frame_index: currentFrame,
+        source_frame_index: currentFrame,
+        source_timestamp_seconds: currentFrame / fps,
+        source_fps: fps,
         track_id: track.trackId,
         anonymous_code: track.anonymousCode,
         confidence: track.confidence,
