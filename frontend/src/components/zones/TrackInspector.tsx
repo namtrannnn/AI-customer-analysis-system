@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { MovementTrack, StoreZone } from "@/types/zone.type";
 import { Activity, Users, Clock, MapPin, HelpCircle, User } from "lucide-react";
+import { formatDuration } from "@/utils/formatDate";
 
 interface TrackInspectorProps {
   tracks: MovementTrack[];
@@ -126,7 +127,7 @@ export default function TrackInspector({
                     </div>
                     {t.duration_seconds !== null && (
                       <span className="text-[10px] font-medium text-slate-450 dark:text-slate-500 shrink-0">
-                        {Math.round(t.duration_seconds / 60)} phút
+                        {formatDuration(t.duration_seconds)}
                       </span>
                     )}
                   </button>
