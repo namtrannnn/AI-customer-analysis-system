@@ -134,6 +134,8 @@ class StreamingVideoService:
             "final_profile_ids": [],
             "realtime_detections": [],
             "detection_count": 0,
+            "gallery": global_customer_identity_service._load_gallery(db),
+            "early_identities": {},
         }
 
         try:
@@ -251,8 +253,8 @@ class StreamingVideoService:
         if event_source_fps > 0:
             context["video_fps"] = event_source_fps
 
-        for person in event.get("persons") or []:
-            # Dùng frame/timestamp của VIDEO NGUỒN, không dùng processed_frames.
+        person_list = event.get("detections") or event.get("persons") or []
+        for person in person_list:
             bbox = self._normalize_stream_bbox(person.get("bbox") or [], context)
 
             source_frame_index = int(
@@ -271,6 +273,9 @@ class StreamingVideoService:
                     float(source_frame_index) / max(event_source_fps, 1.0)
                 )
 
+            # 1. Trích xuất embedding từ payload AI
+            embedding = person.get("embedding") 
+
             data = {
                 "frame_index": source_frame_index,
                 "source_frame_index": source_frame_index,
@@ -280,6 +285,7 @@ class StreamingVideoService:
                 "anonymous_code": person.get("anonymous_code"),
                 "confidence": float(person.get("confidence") or 0.0),
                 "bbox": bbox,
+                "embedding": embedding # 2. Truyền embedding vào data để xử lý tiếp
             }
             enriched = self._handle_detection_event(db, job, context, data)
             if enriched:
@@ -331,54 +337,87 @@ class StreamingVideoService:
         context: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any] | None:
-        # Bỏ qua identity chưa ổn định để frontend không hiển thị detection tạm/thiếu tin cậy.
-        anonymous_code = data.get("anonymous_code")
-        if (
-            not anonymous_code
-            or str(anonymous_code).startswith("TEMP_")
-            or str(anonymous_code).upper() in {"TEMP", "PENDING", "TENTATIVE", "RECHECK"}
-        ):
-            return None
-
+        
+        anonymous_code = data.get("anonymous_code") or ""
+        anonymous_code_str = str(anonymous_code).upper()
         track_id = int(data.get("track_id") or 0)
-        frame_index = int(data.get("frame_index") or 0)
-        source_frame_index = int(data.get("source_frame_index") or frame_index)
-        source_timestamp_seconds = max(
-            0.0,
-            float(data.get("source_timestamp_seconds") or 0.0),
-        )
-        source_fps = max(1.0, float(data.get("source_fps") or 25.0))
         confidence = float(data.get("confidence") or 0.0)
-        bbox = data.get("bbox") or []
+
+        # 1. Chặn mã TEMP hiển thị
+        is_temp = anonymous_code_str.startswith("TEMP") or not anonymous_code or "PENDING" in anonymous_code_str
+        identity_status = "PENDING" if is_temp else "CONFIRMED"
+
+        # Tận dụng hàm quét vét cạn mọi key của service để tìm embedding
+        embedding = global_customer_identity_service.extract_profile_embedding(data)
+
+        # =================================================================
+        # ĐẶT MÁY NGHE LÉN LOG (DEBUG) - HÃY NHÌN VÀO TERMINAL CỦA BACKEND
+        # =================================================================
+        if confidence >= 0.85 and track_id not in context.get("logged_tracks", set()):
+            context.setdefault("logged_tracks", set()).add(track_id)
+            print(f"\n[EARLY-RECOG DEBUG] Track {track_id} đạt conf {confidence:.2f}. Có Vector AI gửi kèm không?: {embedding is not None}")
+        # =================================================================
+
+        # 2. Xử lý nhận diện sớm (Early Recognition)
+        if track_id not in context["early_identities"]:
+            if confidence >= 0.85 and embedding is not None:
+                gallery = context.get("gallery", {})
+                
+                match_result = global_customer_identity_service.match_embedding(
+                    embedding=embedding,
+                    gallery=gallery
+                )
+                
+                print(f"[EARLY-RECOG DEBUG] Track {track_id} so sánh DB -> Matched: {match_result.matched} | P_ID: {match_result.person_profile_id} | Điểm khớp: {match_result.best_similarity:.4f}")
+
+                if match_result and match_result.matched and match_result.person_profile_id:
+                    person = db.get(PersonProfile, match_result.person_profile_id)
+                    customer = self._get_customer_for_profile(db, person.id) if person else None
+                    
+                    context["early_identities"][track_id] = {
+                        "customer_id": customer.id if customer else None,
+                        "customer_name": customer.full_name if customer else None,
+                        "customer_type": "returning" if customer else "new",
+                        "stored_profile_avatar": person.face_image_url if person else None,
+                        "identified_customer_avatar": customer.avatar_url if customer else None,
+                        "session_profile_id": str(person.anonymous_code) if person else None,
+                    }
+                else:
+                    context["early_identities"][track_id] = {"customer_type": "new"}
+
+        early_info = context["early_identities"].get(track_id, {})
+        
+        display_code = early_info.get("session_profile_id") or str(anonymous_code)
+        if identity_status != "CONFIRMED" and not early_info.get("session_profile_id"):
+             display_code = str(track_id)
+
+        # 3. Đóng gói trả về Frontend
         context["realtime_detections"].append({
-            "frame_index": frame_index,
-            "source_frame_index": source_frame_index,
-            "source_timestamp_seconds": source_timestamp_seconds,
-            "source_fps": source_fps,
+            "frame_index": int(data.get("frame_index") or 0),
+            "source_frame_index": int(data.get("source_frame_index") or 0),
+            "source_timestamp_seconds": max(0.0, float(data.get("source_timestamp_seconds") or 0.0)),
+            "source_fps": max(1.0, float(data.get("source_fps") or 25.0)),
             "track_id": track_id,
-            "anonymous_code": str(anonymous_code),
+            "anonymous_code": display_code,
             "confidence": confidence,
-            "bbox": bbox,
+            "bbox": data.get("bbox") or [],
         })
 
-        # Realtime chỉ hiển thị P_id tạm của video. Không tra PersonProfile
-        # bằng P_000X vì P_000X reset ở mỗi video và có thể lấy nhầm avatar DB.
         return {
-            "frame_index": frame_index,
-            "source_frame_index": source_frame_index,
-            "source_timestamp_seconds": source_timestamp_seconds,
-            "source_fps": source_fps,
+            "frame_index": int(data.get("frame_index") or 0),
+            "source_timestamp_seconds": max(0.0, float(data.get("source_timestamp_seconds") or 0.0)),
             "track_id": track_id,
-            "anonymous_code": str(anonymous_code),
-            "session_profile_id": str(anonymous_code),
-            "confidence": max(0.0, min(1.0, confidence)),
-            "bbox": bbox,
-            "customer_id": None,
-            "customer_name": None,
-            "customer_avatar": None,
-            "current_video_avatar": None,
-            "stored_profile_avatar": None,
-            "identified_customer_avatar": None,
+            "anonymous_code": display_code,
+            "session_profile_id": early_info.get("session_profile_id") or (display_code if not is_temp else None),
+            "identity_status": "CONFIRMED" if early_info.get("session_profile_id") else identity_status, 
+            "confidence": confidence,
+            "bbox": data.get("bbox") or [],
+            "customer_type": early_info.get("customer_type") or "new",
+            "customer_id": early_info.get("customer_id"),
+            "customer_name": early_info.get("customer_name"),
+            "stored_profile_avatar": early_info.get("stored_profile_avatar"),
+            "identified_customer_avatar": early_info.get("identified_customer_avatar"),
+            "current_video_avatar": None, 
         }
 
     def _finalize_job_data(
@@ -542,6 +581,8 @@ class StreamingVideoService:
             if person is None:
                 continue
 
+            customer = self._get_customer_for_profile(db, person.id)
+
             identity_payload = {
                 "session_profile_id": session_pid,
                 "person_profile_id": int(person.id),
@@ -549,8 +590,10 @@ class StreamingVideoService:
                 "customer_type": str(result.customer_type),
                 "total_visits": int(person.total_visits or 0),
                 "matched_similarity": float(result.matched_similarity or 0.0),
-                "customer_id": None,
-                "customer_name": None,
+                "customer_id": customer.id if customer else None,
+                "customer_name": customer.full_name if customer else None,
+                "stored_profile_avatar": person.face_image_url,
+                "identified_customer_avatar": customer.avatar_url if customer else None,
                 "current_video_avatar": None,
             }
             session_profile_mapping[session_pid] = identity_payload
