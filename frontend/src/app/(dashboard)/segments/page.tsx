@@ -375,8 +375,8 @@ export default function CustomerSegmentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                  {filteredMembers.map((m) => (
-                    <tr key={m.person_profile_id} className="hover:bg-slate-50/50 dark:hover:bg-slate-750/30 transition">
+                  {filteredMembers.map((m, index) => (
+                    <tr key={`${m.person_profile_id}-${index}`} className="hover:bg-slate-50/50 dark:hover:bg-slate-750/30 transition">
                       <td className="px-5 py-3 font-semibold text-slate-700 dark:text-slate-300 font-mono text-xs whitespace-nowrap">
                         {m.anonymous_code}
                       </td>

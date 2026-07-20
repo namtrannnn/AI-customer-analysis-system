@@ -36,28 +36,38 @@ class AICustomerClusteringService:
         kmeans = KMeans(n_clusters=actual_clusters, random_state=42, n_init="auto")
         cluster_labels = kmeans.fit_predict(X)
 
-        # 2. Phân tích Auto-Labeling
+        # 2. Phân tích Auto-Labeling (THUẬT TOÁN THÍCH ỨNG)
         raw_df["cluster_id"] = cluster_labels
-        cluster_means = raw_df.groupby("cluster_id")[
-            ["total_spent", "total_orders", "avg_duration", "total_visits"]
-        ].mean()
+        
+        required_cols = ["total_spent", "total_orders", "avg_duration", "total_visits"]
+        for col in required_cols:
+            if col not in raw_df.columns:
+                raw_df[col] = 0.0
+
+        cluster_means = raw_df.groupby("cluster_id")[required_cols].mean()
+
+        #  TÌM RA "ĐỈNH" CỦA DỮ LIỆU ĐỂ LÀM HỆ QUY CHIẾU
+        max_spent = cluster_means["total_spent"].max()
+        max_duration = cluster_means["avg_duration"].max()
+        max_visits = cluster_means["total_visits"].max()
 
         dynamic_labels = {}
-        spending_threshold = 500000
-        duration_threshold = 1500
 
         for cluster_id, row in cluster_means.iterrows():
             avg_spent = row["total_spent"]
             avg_duration = row["avg_duration"]
-            avg_orders = row['total_orders']
             avg_visits = row["total_visits"]
 
-            if avg_spent >= 5000000:
+            # Phân loại dựa trên tỷ lệ % so với cụm cao nhất
+            if avg_spent > 0 and avg_spent >= (max_spent * 0.6):
                 name = "VIP / Big Spender - Chi tiêu cực khủng"
-            elif avg_spent >= spending_threshold:
-                name = "Khách quen - Mua lắt nhắt nhưng đều" if avg_visits >= 3 else "Mua nhanh rút gọn"
+            elif avg_spent > 0 and avg_spent >= (max_spent * 0.15):
+                name = "Khách quen - Mua đều" if avg_visits >= (max_visits * 0.5) else "Mua nhanh rút gọn"
             else:
-                name = "Window Shopper - Ở rất lâu nhưng không mua" if avg_duration >= duration_threshold else "Vãng lai - Ghé cực nhanh rồi đi"
+                if max_duration > 0 and avg_duration >= (max_duration * 0.6):
+                    name = "Window Shopper - Ở rất lâu nhưng không mua"
+                else:
+                    name = "Vãng lai - Ghé cực nhanh rồi đi"
 
             dynamic_labels[int(cluster_id)] = name
 
@@ -75,7 +85,7 @@ class AICustomerClusteringService:
         try:
             segment_mapping = {}
 
-            # Cập nhật hoặc tạo mới thông tin các Cụm vào bảng customer_segments
+            # 1. Cập nhật hoặc tạo mới thông tin các Cụm (0, 1, 2...)
             for cluster_id, label_name in dynamic_labels.items():
                 segment_name = f"Nhóm {cluster_id} ({label_name})"
 
@@ -88,16 +98,27 @@ class AICustomerClusteringService:
                 else:
                     segment = CustomerSegment(
                         segment_name=segment_name,
-                        description="Nhóm được phân loại tự động bởi K-Means",
+                        description="Nhóm được phân loại tự động bởi K-Means AI-08",
                         rule_definition={"algorithm": "K-Means", "cluster_index": cluster_id},
                     )
                     self.db.add(segment)
 
-                self.db.commit()
-                self.db.refresh(segment)
+                self.db.flush()
                 segment_mapping[cluster_id] = segment.id
 
-            # Xóa mapping cũ và chuẩn bị insert mới
+            # 🚀 2. BỔ SUNG CHỐT CHẶN: XÓA CÁC CỤM "ZOMBIE" CỦA LẦN CHẠY TRƯỚC
+            # Lấy danh sách các index đang được sử dụng trong lần chạy này (VD: ['0', '1', '2'])
+            active_cluster_indexes = [str(k) for k in dynamic_labels.keys()]
+
+            # Xóa thẳng tay các cụm do K-Means tạo ra nhưng không nằm trong danh sách active
+            self.db.query(CustomerSegment).filter(
+                CustomerSegment.rule_definition["algorithm"].astext == "K-Means",
+                CustomerSegment.rule_definition["cluster_index"].astext.notin_(active_cluster_indexes)
+            ).delete(synchronize_session=False)
+
+            self.db.commit()
+
+            # 3. Xóa mapping thành viên cũ (Clear old members)
             self.db.query(CustomerSegmentMember).delete()
             self.db.commit()
 

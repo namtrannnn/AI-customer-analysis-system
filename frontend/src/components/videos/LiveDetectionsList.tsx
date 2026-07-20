@@ -92,6 +92,21 @@ export default function LiveDetectionsList({
     >();
 
     for (const detection of detections) {
+      const anonCode = String(detection.anonymous_code || "").toUpperCase();
+      const sessionCode = String(detection.session_profile_id || "").toUpperCase();
+      const statusCode = String(detection.identity_status || "").toUpperCase();
+      
+      const isTrash = 
+        anonCode.includes("TEMP") || sessionCode.includes("TEMP") ||
+        anonCode.includes("PENDING") || sessionCode.includes("PENDING") ||
+        anonCode.includes("TENTATIVE") || sessionCode.includes("TENTATIVE") ||
+        statusCode === "NEW_TRACK" || statusCode === "PENDING" || statusCode === "RECHECK";
+
+      // Nếu chứa mã tạm, lập tức bỏ qua, không render thẻ này
+      if (isTrash && statusCode !== "CONFIRMED") {
+        continue;
+      }
+      
       const key = getDetectionIdentityKey(detection);
       const existing = uniqueDetections.get(key);
 

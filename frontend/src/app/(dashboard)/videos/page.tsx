@@ -884,18 +884,11 @@ export default function VideosPage() {
                   anonymous_code: identity.anonymous_code,
                   customer_type: identity.customer_type,
                   total_visits: identity.total_visits,
-                  customer_id:
-                    identity.customer_id ??
-                    previousDetection.customer_id ??
-                    null,
-                  customer_name:
-                    identity.customer_name ??
-                    previousDetection.customer_name ??
-                    null,
-                  current_video_avatar:
-                    identity.current_video_avatar ??
-                    previousDetection.current_video_avatar ??
-                    null,
+                  customer_id: identity.customer_id ?? previousDetection.customer_id ?? null,
+                  customer_name: identity.customer_name ?? previousDetection.customer_name ?? null,
+                  stored_profile_avatar: identity.stored_profile_avatar ?? previousDetection.stored_profile_avatar ?? null,
+                  identified_customer_avatar: identity.identified_customer_avatar ?? previousDetection.identified_customer_avatar ?? null,
+                  current_video_avatar: identity.current_video_avatar ?? previousDetection.current_video_avatar ?? null,
                 };
 
                 const existing = grouped.get(
@@ -979,20 +972,26 @@ export default function VideosPage() {
     setPlaybackState("waiting");
   }, [resetStreaming]);
 
-  /// 1. Chỉ đưa người vào danh sách khi video đã phát tới timestamp đầu tiên của họ
+  // 1. Chỉ đưa người vào danh sách khi video đã phát tới timestamp đầu tiên của họ
   const visibleDetections = useMemo(() => {
-    return allDetections.filter((detection) => {
-      // Lấy thời điểm xuất hiện đầu tiên của track này
-      const firstAppearance = firstAppearanceMapRef.current.get(detection.track_id);
-      
-      // Nếu chưa có trong map (lỗi đồng bộ hiếm), fallback về timestamp hiện tại
-      const appearTime = firstAppearance !== undefined 
-        ? firstAppearance 
+  return allDetections.filter((detection) => {
+    // Điều kiện 1: Video đã chạy đến thời điểm người này xuất hiện
+    const firstAppearance = firstAppearanceMapRef.current.get(detection.track_id);
+    const appearTime =
+      firstAppearance !== undefined
+        ? firstAppearance
         : detection.source_timestamp_seconds;
-        
-      return appearTime <= videoTime;
-    });
-  }, [allDetections, videoTime]);
+
+    if (appearTime > videoTime) {
+      return false;
+    }
+
+    // Điều kiện 2: Chỉ hiển thị người đã được xác nhận
+    return (
+      String(detection.identity_status || "").toUpperCase() === "CONFIRMED"
+    );
+  });
+}, [allDetections, videoTime]);
 
   // 2. Chỉnh % tiến trình phân tích và số frame dựa theo độ dài video thực tế
   const displayStreamProgress = useMemo(() => {

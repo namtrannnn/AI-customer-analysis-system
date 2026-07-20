@@ -8,7 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     CheckConstraint,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from app.database.base import Base
@@ -17,6 +17,8 @@ class CustomerIdentity(Base):
     __tablename__ = "customer_identities"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, index=True)
+    customer = relationship("Customer") 
+    person_profile = relationship("PersonProfile")
     
     # Khóa ngoại liên kết với bảng person_profiles
     person_profile_id: Mapped[int] = mapped_column(

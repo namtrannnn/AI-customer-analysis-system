@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/segments", tags=["Customer Segments"])
 # API CHẠY AI PHÂN CỤM (Yêu cầu quyền Admin/Manager)
 @router.post("/run-clustering")
 def trigger_ai_clustering(
-    n_clusters: int = Body(default=5, embed=True, ge=2, le=10),
+    n_clusters: int = Body(default=3, embed=True, ge=2, le=10),
     db: Session = Depends(get_db),
     admin_user=Depends(get_admin_user),
 ):
@@ -29,8 +29,10 @@ def trigger_ai_clustering(
     Kích hoạt luồng tổng hợp dữ liệu thật từ Database và chạy AI phân cụm.
     """
     try:
-        data_prep_service = DataPreparationService(db)
-        raw_df = data_prep_service.get_customer_feature_dataset()
+        ai_service = AICustomerClusteringService(db=db, n_clusters=n_clusters)
+    
+        data_prep = DataPreparationService(db)
+        raw_df = data_prep.get_customer_feature_dataset()
 
         if raw_df.empty:
             return success_response(

@@ -441,104 +441,77 @@ export default function StreamingOverlay({
           height: `${scale.height}px`,
         }}
       >
-        {displayDetections.map((detection) => {
-          const normalizedBBox =
-            normalizeBBox(detection);
+        {detections.map((detection) => {
+          // --- SỬA ĐOẠN NÀY ---
+          // Dùng hàm normalizeBBox để đảm bảo an toàn và tính ra width/height chuẩn
+          const normBbox = normalizeBBox(detection);
+          if (!normBbox) return null;
 
-          if (!normalizedBBox) {
-            return null;
+          const [x1, y1, x2, y2] = normBbox;
+          const boxWidth = x2 - x1;
+          const boxHeight = y2 - y1;
+          // --------------------
+
+          const status = detection.identity_status || "CONFIRMED";
+          const isConfirmed = status === "CONFIRMED";
+
+          // Cấu hình màu sắc theo trạng thái định danh
+          let themeColor = "border-slate-400 bg-slate-500/10";
+          let labelBg = "bg-slate-500";
+          let labelText = "TRACKING";
+
+          if (status === "PENDING") {
+            themeColor = "border-amber-400 bg-amber-500/10 shadow-[0_0_10px_rgba(251,191,36,0.3)]";
+            labelBg = "bg-amber-500";
+            labelText = "ANALYZING";
+          } else if (status === "TENTATIVE") {
+            themeColor = "border-sky-400 bg-sky-500/10 shadow-[0_0_10px_rgba(56,189,248,0.3)]";
+            labelBg = "bg-sky-500";
+            labelText = "CANDIDATE";
+          } else if (status === "RECHECK") {
+            themeColor = "border-rose-400 bg-rose-500/10 shadow-[0_0_10px_rgba(251,113,133,0.3)]";
+            labelBg = "bg-rose-500";
+            labelText = "RE-SYNC";
+          } else if (status === "CONFIRMED") {
+            themeColor = "border-indigo-500 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.3)]";
+            labelBg = "bg-indigo-500";
+            labelText = detection.session_profile_id || `P-ID PENDING`;
           }
 
-          const [x1, y1, x2, y2] =
-            normalizedBBox;
-
-          const left = x1 * scale.width;
-          const top = y1 * scale.height;
-          const width =
-            (x2 - x1) * scale.width;
-          const height =
-            (y2 - y1) * scale.height;
-
-          if (
-            width <
-              BOX_CONFIG.minimumBoxSizePx ||
-            height <
-              BOX_CONFIG.minimumBoxSizePx
-          ) {
-            return null;
-          }
-
-          const stableProfile =
-            isStableProfile(detection);
-
-          const classes = stableProfile
-            ? getBoxClasses(detection.track_id)
-            : {
-                border: "border-amber-400",
-                background: "bg-amber-400/5",
-                label: "bg-amber-500",
-              };
-
-          const displayName = stableProfile
-            ? (
-                detection.customer_name ||
-                detection.anonymous_code ||
-                detection.session_profile_id ||
-                `Track ${detection.track_id}`
-              )
-            : getPendingLabel(detection);
-
-          const confidence = Number.isFinite(
-            detection.confidence,
-          )
-            ? Math.max(
-                0,
-                Math.min(
-                  1,
-                  detection.confidence,
-                ),
-              )
-            : 0;
+          const displayLabel = isConfirmed 
+            ? (detection.customer_name || detection.session_profile_id || `TRK-${detection.track_id}`)
+            : `${labelText} [${detection.track_id}]`;
 
           return (
             <div
-              // Chỉ dùng track_id để React giữ nguyên DOM node.
-              // Không dùng frame_index vì sẽ remount bbox mỗi frame.
-              key={`track-${detection.track_id}`}
-              className={[
-                "absolute rounded-lg border-2",
-                stableProfile
-                  ? "border-solid"
-                  : "border-dashed",
-                "transition-[left,top,width,height]",
-                "duration-75 ease-linear",
-                classes.border,
-                classes.background,
-              ].join(" ")}
+              key={detection.track_id}
+              className="absolute transition-all duration-75 pointer-events-none"
               style={{
-                transform: `translate3d(${left}px, ${top}px, 0)`,
-                width: `${width}px`,
-                height: `${height}px`,
-                willChange:
-                  "transform,width,height",
+                // --- CẬP NHẬT BIẾN Ở ĐÂY ---
+                left: `${x1 * 100}%`,
+                top: `${y1 * 100}%`,
+                width: `${boxWidth * 100}%`,
+                height: `${boxHeight * 100}%`,
               }}
             >
-              <div
-                className={[
-                  "absolute -top-6 left-0",
-                  "flex whitespace-nowrap rounded",
-                  "px-2 py-0.5 text-[10px]",
-                  "font-extrabold uppercase",
-                  "tracking-wide text-white shadow-sm",
-                  classes.label,
-                ].join(" ")}
-              >
-                <span>{displayName}</span>
-                {stableProfile && (
-                  <span className="ml-1 opacity-80">
-                    ({Math.round(confidence * 100)}%)
-                  </span>
-                )}
+              <div className={`absolute inset-0 border-[1.5px] ${themeColor}`}></div>
+
+              {isConfirmed && (
+                <>
+                  <div className="absolute top-[-1px] left-[-1px] h-3 w-3 border-t-2 border-l-2 border-indigo-500"></div>
+                  <div className="absolute top-[-1px] right-[-1px] h-3 w-3 border-t-2 border-r-2 border-indigo-500"></div>
+                  <div className="absolute bottom-[-1px] left-[-1px] h-3 w-3 border-b-2 border-l-2 border-indigo-500"></div>
+                  <div className="absolute bottom-[-1px] right-[-1px] h-3 w-3 border-b-2 border-r-2 border-indigo-500"></div>
+                </>
+              )}
+
+              <div className={`absolute -top-6 left-[-1.5px] flex items-center px-2 py-0.5 shadow-sm transition-colors ${labelBg}`}>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white">
+                  {displayLabel}
+                </span>
+                <span className="ml-2 font-mono text-[9px] text-white/80">
+                  {Math.round(detection.confidence * 100)}%
+                </span>
               </div>
             </div>
           );

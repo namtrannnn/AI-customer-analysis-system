@@ -31,7 +31,7 @@ export interface StreamDetectionPayload {
   bbox: [number, number, number, number];
   confidence: number;
 
-  identity_status?: string | null;
+  identity_status?: "NEW_TRACK" | "PENDING" | "TENTATIVE" | "RECHECK" | "CONFIRMED" | null;
 
   session_profile_id?: string | null;
   person_profile_id?: number | null;
@@ -60,6 +60,8 @@ export interface GlobalIdentityItem {
   customer_id?: number | null;
   customer_name?: string | null;
   current_video_avatar?: string | null;
+  stored_profile_avatar?: string | null;
+  identified_customer_avatar?: string | null;
 }
 
 export interface GlobalIdentityResultPayload {

@@ -13,7 +13,7 @@ class DataPreparationService:
     def get_customer_feature_dataset(self) -> pd.DataFrame:
         """
         Truy vấn và tổng hợp dữ liệu khách hàng từ các bảng liên quan.
-        Trả về pandas DataFrame chứa các đặc trưng hành vi.
+        Bảo vệ chặt chẽ chống lặp dữ liệu (Duplicate Keys) và NaN.
         """
         # 1. Truy vấn thông tin cơ bản từ person_profiles
         profiles_query = self.db.query(
@@ -29,11 +29,12 @@ class DataPreparationService:
         ).group_by(VisitSession.person_profile_id).subquery()
 
         # 3. Tổng hợp hành vi mua hàng từ orders
+        # Lưu ý: Bảng orders lưu theo cả customer_id và person_profile_id
         orders_query = self.db.query(
             Order.person_profile_id,
             func.count(Order.id).label("total_orders"),
             func.sum(Order.total_amount).label("total_spent")
-        ).group_by(Order.person_profile_id).subquery()
+        ).filter(Order.person_profile_id.isnot(None)).group_by(Order.person_profile_id).subquery()
 
         # 4. Tổng hợp số khu vực đã ghé thăm từ zone_visits
         zones_query = self.db.query(
@@ -42,7 +43,7 @@ class DataPreparationService:
             func.sum(ZoneVisit.duration_seconds).label("total_zone_duration")
         ).group_by(ZoneVisit.person_profile_id).subquery()
 
-        # 5. Join tất cả các subquery lại với nhau
+        # 5. CỐT LÕI CHỐNG NHÂN BẢN: Sử dụng select_from() làm mỏ neo chuẩn xác
         final_query = self.db.query(
             profiles_query.c.person_profile_id,
             profiles_query.c.total_visits,
@@ -52,6 +53,8 @@ class DataPreparationService:
             orders_query.c.total_spent,
             zones_query.c.unique_zones_visited,
             zones_query.c.total_zone_duration
+        ).select_from(
+            profiles_query
         ).outerjoin(
             sessions_query, profiles_query.c.person_profile_id == sessions_query.c.person_profile_id
         ).outerjoin(
@@ -60,7 +63,14 @@ class DataPreparationService:
             zones_query, profiles_query.c.person_profile_id == zones_query.c.person_profile_id
         )
 
-        # Đọc trực tiếp kết quả truy vấn vào Pandas DataFrame
+        # 6. Đọc trực tiếp kết quả truy vấn vào Pandas DataFrame
         df = pd.read_sql(final_query.statement, self.db.bind)
+        
+        # BỘ KHIÊN KÉP BẢO VỆ PANDAS
+        # 1. Ép buộc xóa mọi ID bị trùng (nếu có dị thường từ CSDL)
+        df = df.drop_duplicates(subset=["person_profile_id"])
+        
+        # 2. Thay thế toàn bộ giá trị NaN (Khách không mua hàng / Không có lịch sử) thành số 0
+        df = df.fillna(0)
         
         return df
