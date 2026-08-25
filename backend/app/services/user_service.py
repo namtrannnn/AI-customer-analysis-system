@@ -199,6 +199,15 @@ def update_user(db: Session, user_id: int, payload: UserUpdate) -> User:
         if phone_exists:
             raise HTTPException(status_code=400, detail="Số điện thoại này đã được đăng ký bởi người dùng khác.")
 
+    if "username" in update_data and update_data["username"]:
+        username_exists = db.query(User).filter(
+            User.username == update_data["username"],
+            User.id != user_id,
+            User.status != "deleted"
+        ).first()
+        if username_exists:
+            raise HTTPException(status_code=400, detail="Tên đăng nhập này đã được sử dụng bởi người dùng khác.")
+
     try:
         if "role_id" in update_data:
             new_role_id = update_data.pop("role_id")

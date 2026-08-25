@@ -78,6 +78,7 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [username, setUsername] = useState("");
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -121,6 +122,7 @@ export default function ProfilePage() {
         setFullName(data.full_name ?? "");
         setEmail(data.email ?? "");
         setPhone(data.phone ?? "");
+        setUsername(data.username ?? "");
       } catch (error) {
         console.error(error);
         toast.error("Không thể tải thông tin tài khoản");
@@ -185,6 +187,7 @@ export default function ProfilePage() {
 
     const payload: UserUpdatePayload = {
       full_name: fullName.trim(),
+      username: username.trim() || undefined,
       email: email.trim() || null,
       phone: phone.trim() || null,
       role_id: user.role_id ?? null,
@@ -199,6 +202,7 @@ export default function ProfilePage() {
       setFullName(updated.full_name ?? "");
       setEmail(updated.email ?? "");
       setPhone(updated.phone ?? "");
+      setUsername(updated.username ?? "");
 
       const oldUser = getUser<AuthUser>();
 
@@ -217,7 +221,8 @@ export default function ProfilePage() {
       toast.success("Cập nhật thông tin thành công");
     } catch (error) {
       console.error(error);
-      toast.error("Cập nhật thông tin thất bại");
+      const msg = error instanceof Error ? error.message : "Cập nhật thông tin thất bại";
+      toast.error(msg);
     } finally {
       setSavingProfile(false);
     }
@@ -236,6 +241,21 @@ export default function ProfilePage() {
       return;
     }
 
+    if (!/[A-Z]/.test(newPassword)) {
+      toast.error("Mật khẩu mới phải chứa ít nhất 1 chữ cái viết hoa (A-Z)");
+      return;
+    }
+
+    if (!/\d/.test(newPassword)) {
+      toast.error("Mật khẩu mới phải chứa ít nhất 1 chữ số (0-9)");
+      return;
+    }
+
+    if (!/[@$!%*?&#^_\-]/.test(newPassword)) {
+      toast.error("Mật khẩu mới phải chứa ít nhất 1 ký tự đặc biệt (@ $ ! % * ? & # ^ _ -)");
+      return;
+    }
+
     if (newPassword !== confirmPassword) {
       toast.error("Xác nhận mật khẩu không khớp");
       return;
@@ -244,7 +264,6 @@ export default function ProfilePage() {
     try {
       setSavingPassword(true);
 
-      // TODO: gắn API đổi mật khẩu ở đây
       await changePassword({
         old_password: currentPassword,
         new_password: newPassword,
@@ -256,9 +275,11 @@ export default function ProfilePage() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      setIsEditingPassword(false);
     } catch (error) {
       console.error(error);
-      toast.error("Đổi mật khẩu thất bại");
+      const msg = error instanceof Error ? error.message : "Đổi mật khẩu thất bại";
+      toast.error(msg);
     } finally {
       setSavingPassword(false);
     }
@@ -270,6 +291,7 @@ export default function ProfilePage() {
     setFullName(user.full_name ?? "");
     setEmail(user.email ?? "");
     setPhone(user.phone ?? "");
+    setUsername(user.username ?? "");
     setIsEditingProfile(false);
   }
 
@@ -491,7 +513,16 @@ export default function ProfilePage() {
                 label="Tên đăng nhập"
                 icon={<AtSign className="h-4 w-4" />}
               >
-                <ReadOnlyInput value={`@${user.username}`} />
+                {isEditingProfile ? (
+                  <TextInput
+                    value={username}
+                    onChange={setUsername}
+                    placeholder="Nhập tên đăng nhập mới"
+                    disabled={savingProfile}
+                  />
+                ) : (
+                  <ReadOnlyInput value={`@${user.username}`} />
+                )}
               </FormField>
             </div>
 
@@ -648,9 +679,14 @@ export default function ProfilePage() {
                     Lưu ý bảo mật
                   </p>
                   <p className="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
-                    Mật khẩu mới nên có ít nhất 8 ký tự. Nên dùng chữ hoa, chữ
-                    thường, số và ký tự đặc biệt.
+                    Mật khẩu mới phải đáp ứng:
                   </p>
+                  <ul className="mt-1 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                    <li>• Ít nhất 8 ký tự</li>
+                    <li>• Ít nhất 1 chữ cái viết hoa (A-Z)</li>
+                    <li>• Ít nhất 1 chữ số (0-9)</li>
+                    <li>• Ít nhất 1 ký tự đặc biệt (@ $ ! % * ? &amp; # ^ _ -)</li>
+                  </ul>
                 </div>
               </div>
 

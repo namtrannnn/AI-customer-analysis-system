@@ -94,3 +94,24 @@ class ZoneVisitResponse(BaseModel):
     duration_seconds: int | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Heatmap Schemas (PB07) ───────────────────────────────────────────────────
+class ZoneHeatmapItem(BaseModel):
+    zone_id: int
+    zone_name: str
+    zone_type: str
+    polygon: list[PointSchema]
+    color: str
+    total_visits: int
+    total_duration: int
+    intensity: float  # Chuẩn hóa Min-Max (0..100)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ZoneHeatmapResponse(BaseModel):
+    items: list[ZoneHeatmapItem]
+    max_duration: int
+    total_visits_sum: int
+

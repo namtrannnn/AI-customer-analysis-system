@@ -204,8 +204,14 @@ def delete_role(db: Session, role_id: int) -> dict:
     if not role:
         raise HTTPException(status_code=404, detail="Không tìm thấy Nhóm quyền.")
 
-    # Kiểm tra ràng buộc: Không cho phép xóa Role đang có người sử dụng
-    users_with_role = db.query(UserRole).filter(UserRole.role_id == role_id).first()
+    # Kiểm tra ràng buộc: Không cho phép xóa Role đang có người sử dụng.
+    # Đồng bộ với màn danh sách/chi tiết: user đã xóa mềm không còn được tính là đang gán role.
+    users_with_role = db.query(UserRole).join(
+        User, UserRole.user_id == User.id
+    ).filter(
+        UserRole.role_id == role_id,
+        User.status != "deleted",
+    ).first()
     if users_with_role:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

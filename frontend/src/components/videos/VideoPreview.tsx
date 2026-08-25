@@ -10,13 +10,30 @@ interface VideoPreviewProps {
   file: File;
   onRemove: () => void;
   disabled?: boolean;
+  analysisMode?: boolean;
+  analysisReady?: boolean;
+  analysisProgress?: number;
+  autoPlayWhenReady?: boolean;
+  playbackRate?: number;
 }
 
-export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPreviewProps) {
+export default function VideoPreview({
+  meta,
+  file,
+  onRemove,
+  disabled,
+  analysisMode = false,
+  analysisReady = true,
+  analysisProgress = 0,
+  autoPlayWhenReady = true,
+  playbackRate = 0.8,
+}: VideoPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [objectUrl, setObjectUrl] = useState<string>("");
+
+  const canPlay = !analysisMode || analysisReady;
 
   // Tạo object URL từ file thật
   useEffect(() => {
@@ -25,9 +42,29 @@ export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPr
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    video.playbackRate = playbackRate;
+    if (analysisMode && !analysisReady) {
+      video.pause();
+      video.currentTime = 0;
+      setPlaying(false);
+      setCurrentTime(0);
+      return;
+    }
+
+    if (analysisMode && analysisReady && autoPlayWhenReady) {
+      void video.play().catch(() => {
+        // Trình duyệt có thể chặn autoplay; người dùng vẫn có thể nhấn Play.
+      });
+    }
+  }, [analysisMode, analysisReady, autoPlayWhenReady, playbackRate]);
+
   function togglePlay() {
     const v = videoRef.current;
-    if (!v) return;
+    if (!v || !canPlay) return;
     if (playing) {
       v.pause();
     } else {
@@ -48,6 +85,7 @@ export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPr
 
   function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
     const t = parseFloat(e.target.value);
+    if (!canPlay) return;
     if (videoRef.current) videoRef.current.currentTime = t;
     setCurrentTime(t);
   }
@@ -68,12 +106,27 @@ export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPr
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
             playsInline
-            preload="metadata"
+            preload="auto"
+            controls={false}
           />
         )}
 
+        {analysisMode && !analysisReady && (
+          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/70 px-6 text-center text-white backdrop-blur-sm">
+            <div className="mb-3 h-9 w-9 animate-spin rounded-full border-4 border-white/30 border-t-white" />
+            <p className="text-sm font-bold">Đang chờ quét video...</p>
+            <p className="mt-1 text-xs text-white/75">
+              Khách hàng sẽ xuất hiện ngay khi AI nhận dạng
+            </p>
+            <p className="mt-3 text-[11px] font-semibold text-white/70">
+              Đã chuẩn bị{" "}
+              {Math.max(0, Math.min(100, Math.round(analysisProgress)))}%
+            </p>
+          </div>
+        )}
+
         {/* Overlay controls — chỉ hiện khi không play */}
-        {!playing && (
+        {!playing && canPlay && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/30">
             <button
               onClick={togglePlay}
@@ -86,7 +139,7 @@ export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPr
         )}
 
         {/* Pause button khi đang play */}
-        {playing && (
+        {playing && canPlay && (
           <button
             onClick={togglePlay}
             className="absolute inset-0 flex items-center justify-center opacity-0 transition hover:opacity-100"
@@ -121,7 +174,8 @@ export default function VideoPreview({ meta, file, onRemove, disabled }: VideoPr
             step={0.1}
             value={currentTime}
             onChange={handleSeek}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            disabled={!canPlay}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 disabled:cursor-not-allowed"
             aria-label="Seek video"
           />
         </div>
