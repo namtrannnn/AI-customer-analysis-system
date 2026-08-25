@@ -36,6 +36,7 @@ export interface UserCreateResponse {
 
 export interface UserUpdatePayload {
   full_name?: string;
+  username?: string;
   email?: string | null;
   phone?: string | null;
   avatar_url?: string | null;

@@ -36,6 +36,7 @@ class UserCreate(BaseModel):
 # Hứng dữ liệu khi Admin sửa thông tin
 class UserUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
+    username: str | None = Field(default=None, min_length=3, max_length=50)
     email: EmailStr | None = None
     phone: str | None = Field(default=None, max_length=20)
     avatar_url: str | None = None
@@ -50,6 +51,16 @@ class UserUpdate(BaseModel):
             pattern = r"^(0|\+84)[35789][0-9]{8}$"
             if not re.match(pattern, v):
                 raise ValueError("Số điện thoại không đúng định dạng.")
+        return v
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, v: str | None) -> str | None:
+        if v is None or v == "":
+            return None
+        v = v.strip().lower()
+        if not re.match(r"^[a-z0-9_]{3,50}$", v):
+            raise ValueError("Username chỉ được chứa chữ thường, số và dấu gạch dưới (3-50 ký tự).")
         return v
     
     # Tái sử dụng logic validate từ UserCreate
