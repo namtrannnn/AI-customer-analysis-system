@@ -12,6 +12,7 @@ from app.database.session import get_db
 from app.database.session import SessionLocal 
 
 from app.utils.response import error_response, success_response
+from app.routers import camera_router
 from app.routers import customer_router
 from app.routers import user_router
 from app.routers import auth_router
@@ -86,6 +87,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(camera_router.router)
 app.include_router(customer_router.router)
 app.include_router(user_router.router)
 app.include_router(auth_router.router)

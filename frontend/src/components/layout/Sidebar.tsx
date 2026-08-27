@@ -17,6 +17,7 @@ import {
   Sparkles,
   Eye,
   Flame,
+  Cctv,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
 
@@ -38,6 +39,7 @@ const itemAccent: Record<string, string> = {
   "/segments":    "from-orange-500 to-amber-600",
   "/visit-profiles": "from-emerald-500 to-teal-600",
   "/heatmap": "from-rose-500 to-red-600",
+  "/cameras": "from-sky-500 to-blue-600",
 };
 
 const itemIconColor: Record<string, string> = {
@@ -53,6 +55,7 @@ const itemIconColor: Record<string, string> = {
   "/segments":    "text-orange-500 dark:text-orange-400",
   "/visit-profiles": "text-emerald-500 dark:text-emerald-400",
   "/heatmap": "text-rose-500 dark:text-rose-400",
+  "/cameras": "text-sky-500 dark:text-sky-400",
 };
 
 const menuItems = [
@@ -103,6 +106,13 @@ const menuItems = [
     href: "/videos",
     icon: Video,
     desc: "Phân tích video",
+    permission: null,
+  },
+  {
+    label: "Camera",
+    href: "/cameras",
+    icon: Cctv,
+    desc: "Quản lý camera",
     permission: null,
   },
   {
