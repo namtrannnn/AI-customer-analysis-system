@@ -10,7 +10,7 @@ import Link from "next/link";
 import {
   TrendingUp, Users, UserPlus, UserCheck, Clock, ShoppingBag,
   DollarSign, Percent, Calendar, Download, RefreshCw,
-  ChevronLeft, ChevronRight, Info,
+  ChevronLeft, ChevronRight, Info, FileSpreadsheet, FileText, Loader2,
 } from "lucide-react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -44,6 +44,15 @@ export default function DailyStatsPage() {
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const limit = 15;
+
+  // Export state
+  const [exportRange, setExportRange] = useState({
+    start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+    end: new Date().toISOString().split("T")[0],
+  });
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   // ─── Fetch dữ liệu ──────────────────────────────────────
   const fetchData = useCallback(() => {
@@ -95,6 +104,52 @@ export default function DailyStatsPage() {
     const url = getExportUrl(filters);
     window.open(url, "_blank");
   };
+
+  // Validate export range
+  function validateExportRange(): string | null {
+    if (!exportRange.start || !exportRange.end) return "Vui lòng chọn đầy đủ ngày bắt đầu và kết thúc";
+    if (exportRange.start > exportRange.end) return "Ngày bắt đầu không thể sau ngày kết thúc";
+    const start = new Date(exportRange.start);
+    const end = new Date(exportRange.end);
+    const diffDays = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    if (diffDays > 365) return "Khoảng thời gian không được vượt quá 365 ngày";
+    return null;
+  }
+
+  async function handleExportExcel() {
+    const err = validateExportRange();
+    if (err) { setExportError(err); return; }
+    setExportError(null);
+    setExportingExcel(true);
+    try {
+      // Khi BE sẵn sàng: gọi API /api/reports/export/excel?start_date=...&end_date=...
+      // Tạm thời dùng CSV export hiện có
+      const url = getExportUrl({ start_date: exportRange.start, end_date: exportRange.end });
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `store_report_${exportRange.start}_${exportRange.end}.xlsx`;
+      a.click();
+    } catch {
+      setExportError("Xuất Excel thất bại. Vui lòng thử lại.");
+    } finally {
+      setExportingExcel(false);
+    }
+  }
+
+  async function handleExportPdf() {
+    const err = validateExportRange();
+    if (err) { setExportError(err); return; }
+    setExportError(null);
+    setExportingPdf(true);
+    try {
+      // Khi BE sẵn sàng: gọi API /api/reports/export/pdf?start_date=...&end_date=...
+      // TODO: replace với real PDF API khi BE xong
+      await new Promise((r) => setTimeout(r, 800)); // simulate
+      setExportError("⚙️ Tính năng xuất PDF đang được phát triển. Vui lòng dùng Excel.");
+    } finally {
+      setExportingPdf(false);
+    }
+  }
 
   // ─── KPI Card Component ─────────────────────────────────
   const KpiCard = ({
@@ -190,6 +245,106 @@ export default function DailyStatsPage() {
             <option value="month">Theo tháng</option>
           </select>
         </div>
+      </div>
+
+      {/* ── Export Section (RPT-05) ── */}
+      <div
+        className="rounded-2xl border p-5"
+        style={{ background: "var(--bg-surface)", borderColor: "var(--border)" }}
+      >
+        <div className="mb-4 flex items-center gap-2">
+          <Download className="h-4 w-4 text-emerald-500" />
+          <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
+            Xuất báo cáo hoạt động cửa hàng
+          </h3>
+        </div>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+          {/* Date range */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                Từ ngày
+              </label>
+              <input
+                type="date"
+                value={exportRange.start}
+                max={exportRange.end}
+                onChange={(e) => { setExportRange((p) => ({ ...p, start: e.target.value })); setExportError(null); }}
+                className="rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--bg-surface-2)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                Đến ngày
+              </label>
+              <input
+                type="date"
+                value={exportRange.end}
+                min={exportRange.start}
+                max={new Date().toISOString().split("T")[0]}
+                onChange={(e) => { setExportRange((p) => ({ ...p, end: e.target.value })); setExportError(null); }}
+                className="rounded-lg border px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-emerald-500/30"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--bg-surface-2)",
+                  color: "var(--text-primary)",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Export buttons */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportExcel}
+              disabled={exportingExcel || exportingPdf}
+              className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {exportingExcel
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <FileSpreadsheet className="h-4 w-4" />
+              }
+              {exportingExcel ? "Đang tạo..." : "Xuất Excel"}
+            </button>
+            <button
+              onClick={handleExportPdf}
+              disabled={exportingExcel || exportingPdf}
+              className="flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {exportingPdf
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <FileText className="h-4 w-4" />
+              }
+              {exportingPdf ? "Đang tạo..." : "Xuất PDF"}
+            </button>
+          </div>
+        </div>
+
+        {/* Preview filename */}
+        {exportRange.start && exportRange.end && (
+          <p className="mt-3 text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Tên file: <span className="font-mono font-semibold">
+              store_report_{exportRange.start}_{exportRange.end}.xlsx / .pdf
+            </span>
+          </p>
+        )}
+
+        {/* Error/info message */}
+        {exportError && (
+          <div className={`mt-3 rounded-lg px-3 py-2 text-xs font-semibold ${
+            exportError.startsWith("⚙️")
+              ? "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400"
+              : "bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400"
+          }`}>
+            {exportError}
+          </div>
+        )}
       </div>
 
       {/* Error */}
