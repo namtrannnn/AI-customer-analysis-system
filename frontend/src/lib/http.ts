@@ -23,6 +23,16 @@ function getErrorMessage(error: unknown): string {
 
   const data = axiosError.response?.data;
 
+  // Trường hợp responseType: "blob" — data là Blob, cần parse JSON từ blob
+  if (data instanceof Blob && data.type.includes("application/json")) {
+    // Không thể async ở đây — trả message status code
+    const status = axiosError.response?.status;
+    if (status === 404) return "Không có dữ liệu trong khoảng thời gian đã chọn.";
+    if (status === 403) return "Bạn không có quyền xuất báo cáo.";
+    if (status === 401) return "Phiên đăng nhập hết hạn.";
+    return "Không thể xuất báo cáo. Vui lòng thử lại.";
+  }
+
   if (Array.isArray(data?.details)) {
     return data.details
       .map((item) => {

@@ -7,7 +7,7 @@ import {
   Calendar, BarChart3, Users, Clock,
   ShoppingBag, TrendingUp, Info,
 } from "lucide-react";
-import { getExportUrl } from "@/services/statistics.service";
+import { exportReportExcel, exportReportPdf, type ReportType as ReportTypeEnum } from "@/services/report.service";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function today() {
@@ -142,23 +142,22 @@ export default function ReportsPage() {
     return null;
   }
 
+  const fileName = startDate && endDate
+    ? `store_report_${startDate}_${endDate}`
+    : "store_report";
+
   async function handleExcelExport() {
     const err = validate();
     if (err) { setErrorMsg(err); return; }
     setErrorMsg(null);
     setExcelState("loading");
     try {
-      // Dùng CSV export hiện có — khi BE xong RPT-02 thì đổi sang /api/reports/export/excel
-      const url = getExportUrl({ start_date: startDate, end_date: endDate });
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `store_report_${startDate}_${endDate}.xlsx`;
-      link.click();
+      await exportReportExcel(startDate, endDate, selectedType as ReportTypeEnum);
       setExcelState("success");
       setTimeout(() => setExcelState("idle"), 3000);
-    } catch {
+    } catch (e) {
       setExcelState("error");
-      setErrorMsg("Xuất Excel thất bại. Vui lòng thử lại.");
+      setErrorMsg(e instanceof Error ? e.message : "Xuất Excel thất bại");
       setTimeout(() => setExcelState("idle"), 3000);
     }
   }
@@ -168,15 +167,16 @@ export default function ReportsPage() {
     if (err) { setErrorMsg(err); return; }
     setErrorMsg(null);
     setPdfState("loading");
-    // TODO: gọi /api/reports/export/pdf khi BE hoàn thiện RPT-03
-    await new Promise((r) => setTimeout(r, 800));
-    setPdfState("idle");
-    setErrorMsg("⚙️ Tính năng xuất PDF đang được phát triển. Vui lòng dùng Excel.");
+    try {
+      await exportReportPdf(startDate, endDate, selectedType as ReportTypeEnum);
+      setPdfState("success");
+      setTimeout(() => setPdfState("idle"), 3000);
+    } catch (e) {
+      setPdfState("error");
+      setErrorMsg(e instanceof Error ? e.message : "Xuất PDF thất bại");
+      setTimeout(() => setPdfState("idle"), 3000);
+    }
   }
-
-  const fileName = startDate && endDate
-    ? `store_report_${startDate}_${endDate}`
-    : "store_report";
 
   return (
     <div className="space-y-6">

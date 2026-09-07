@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Cctv, Plus, Pencil, Trash2, AlertTriangle,
   Wifi, WifiOff, RefreshCw, ServerCrash, Settings,
-  MapPin, Layers, Signal, MonitorPlay, X,
+  MapPin, Layers, Signal, MonitorPlay, X, LayoutGrid,
 } from "lucide-react";
 import Button from "@/components/ui/Button";
 import Loading from "@/components/ui/Loading";
@@ -33,6 +33,8 @@ import {
   TRANSPORT_LABELS,
 } from "@/types/camera.type";
 import { formatDateTime } from "@/utils/formatDate";
+
+type TabKey = "manage" | "monitor";
 
 // ─── Connection status dot ────────────────────────────────────────────────────
 function ConnectionDot({ status }: { status: ConnectionStatus | null }) {
@@ -389,6 +391,8 @@ export default function CamerasPage() {
   const [deleteTarget, setDeleteTarget] = useState<Camera | null>(null);
   const [liveTarget, setLiveTarget] = useState<Camera | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<TabKey>("manage");
+  const [gridCols, setGridCols] = useState(2);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const [addForm, setAddForm] = useState<CameraFormData>(EMPTY_FORM);
@@ -473,12 +477,44 @@ export default function CamerasPage() {
             Quản lý danh sách camera và cấu hình kết nối RTSP.
           </p>
         </div>
-        {canManage && (
+        {canManage && tab === "manage" && (
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => { setAddForm(EMPTY_FORM); setAddOpen(true); }}>
             Thêm camera
           </Button>
         )}
       </div>
+
+      {/* Tabs */}
+      <div
+        className="flex gap-1 rounded-xl p-1"
+        style={{ background: "var(--bg-surface-2)", border: "1px solid var(--border)" }}
+      >
+        {([
+          { key: "manage",  label: "Quản lý",        icon: <Cctv className="h-4 w-4" /> },
+          { key: "monitor", label: "Xem tất cả",      icon: <LayoutGrid className="h-4 w-4" /> },
+        ] as { key: TabKey; label: string; icon: React.ReactNode }[]).map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+              tab === t.key
+                ? "bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            }`}
+          >
+            {t.icon}{t.label}
+            {t.key === "monitor" && cameras.length > 0 && (
+              <span className="rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-600 dark:bg-sky-500/20 dark:text-sky-400">
+                {cameras.filter(c => c.preview_url).length}/{cameras.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab: Quản lý ── */}
+      {tab === "manage" && (
+        <>
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
@@ -535,6 +571,125 @@ export default function CamerasPage() {
               onLive={setLiveTarget}
             />
           ))}
+        </div>
+      )}
+        </> )} {/* end tab manage */}
+
+      {/* ── Tab: Xem tất cả ── */}
+      {tab === "monitor" && (
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex min-h-[400px] items-center justify-center">
+              <Loading text="Đang tải camera..." />
+            </div>
+          ) : cameras.length === 0 ? (
+            <div
+              className="flex min-h-[400px] flex-col items-center justify-center gap-3 rounded-2xl"
+              style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+            >
+              <Cctv className="h-10 w-10 text-slate-300" />
+              <p className="text-sm font-semibold" style={{ color: "var(--text-muted)" }}>
+                Chưa có camera nào
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Layout selector */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+                  {cameras.filter(c => c.preview_url).length} / {cameras.length} camera có stream
+                </p>
+                <div
+                  className="flex items-center gap-1 rounded-xl p-1"
+                  style={{ background: "var(--bg-surface-2)" }}
+                >
+                  {([
+                    { cols: 1, label: "1×1" },
+                    { cols: 2, label: "2×2" },
+                    { cols: 3, label: "3×3" },
+                  ]).map(({ cols, label }) => (
+                    <button
+                      key={cols}
+                      onClick={() => setGridCols(cols)}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                        gridCols === cols
+                          ? "bg-white shadow-sm text-slate-900 dark:bg-slate-700 dark:text-slate-100"
+                          : "text-slate-500 hover:text-slate-700 dark:text-slate-400"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Camera grid */}
+              <div className={`grid gap-3 ${
+                gridCols === 1 ? "grid-cols-1 max-w-2xl mx-auto" :
+                gridCols === 2 ? "grid-cols-1 sm:grid-cols-2" :
+                "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+              }`}>
+                {cameras.map((cam) => (
+                  <div
+                    key={cam.id}
+                    className="overflow-hidden rounded-2xl"
+                    style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
+                  >
+                    {/* Camera label bar */}
+                    <div
+                      className="flex items-center justify-between px-3 py-2"
+                      style={{ borderBottom: "1px solid var(--border)" }}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`h-2 w-2 shrink-0 rounded-full ${
+                          cam.last_connection_status === "online" ? "bg-emerald-500 animate-pulse" :
+                          cam.last_connection_status === "reconnecting" ? "bg-amber-500 animate-pulse" :
+                          "bg-slate-300"
+                        }`} />
+                        <span className="truncate text-xs font-bold" style={{ color: "var(--text-primary)" }}>
+                          {cam.camera_name}
+                        </span>
+                        {cam.camera_position && (
+                          <span className="text-[10px] truncate" style={{ color: "var(--text-muted)" }}>
+                            · {cam.camera_position}
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => setLiveTarget(cam)}
+                        className="ml-2 shrink-0 rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                        title="Phóng to"
+                      >
+                        <MonitorPlay className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Player */}
+                    {cam.preview_url ? (
+                      <HLSPlayer
+                        src={cam.preview_url}
+                        label={cam.camera_name}
+                        autoPlay
+                      />
+                    ) : (
+                      <div className="flex aspect-video flex-col items-center justify-center gap-2 bg-slate-900">
+                        <WifiOff className="h-6 w-6 text-slate-600" />
+                        <p className="text-xs font-medium text-slate-500">Chưa có stream URL</p>
+                        {canManage && (
+                          <button
+                            onClick={() => { setEditTarget(cam); setEditForm(cameraToForm(cam)); setTab("manage"); }}
+                            className="mt-1 rounded-lg bg-sky-600/20 px-2.5 py-1 text-[11px] font-semibold text-sky-400 hover:bg-sky-600/30"
+                          >
+                            Cấu hình
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
