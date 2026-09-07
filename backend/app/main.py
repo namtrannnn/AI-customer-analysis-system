@@ -28,6 +28,7 @@ from app.routers import duration_router
 from app.routers import daily_statistics_router
 
 from app.services.statistics_service import DailyStatisticsService
+from app.routers import report_router
 
 # CẤU HÌNH CRONJOB TỔNG HỢP DỮ LIỆU CUỐI NGÀY
 def run_daily_statistics_job():
@@ -102,6 +103,7 @@ app.include_router(duration_router.router)
 app.include_router(daily_statistics_router.router)
 
 app.include_router(person_profile_router.router)
+app.include_router(report_router.router)
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)
 @app.exception_handler(StarletteHTTPException)
