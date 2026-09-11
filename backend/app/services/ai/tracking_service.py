@@ -4,15 +4,28 @@ from typing import Dict, List
 import numpy as np
 from ultralytics import YOLO
 
+from app.core.ai_device import get_device_manager
+
 
 class TrackingService:
     """
     AI-09 Multi Object Tracking Service.
     """
 
-    def __init__(self, model_path: str = "yolov8m.pt", tracker_type: str = "bytetrack.yaml"):
+    def __init__(
+        self,
+        model_path: str = "yolov8m.pt",
+        tracker_type: str = "bytetrack.yaml",
+        device: str | None = None,
+        default_imgsz: int | None = None,
+    ):
         self.model = YOLO(model_path)
+        self.device_manager = get_device_manager()
+        self.device = device or self.device_manager.resolve_device()
         self.tracker_type = tracker_type
+        self.use_fp16 = self.device.startswith("cuda")
+        self.default_imgsz = default_imgsz or 1280
+        self.default_vid_stride = 1
         self._buffer_patched = False
 
     def reset(self) -> None:
@@ -49,6 +62,8 @@ class TrackingService:
             tracker=self.tracker_type,
             persist=True,
             verbose=False,
+            device=self.device,
+            half=self.use_fp16,
         )
 
         self._patch_tracker_buffer()

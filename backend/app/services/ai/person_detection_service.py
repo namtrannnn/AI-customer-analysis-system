@@ -3,6 +3,8 @@ import os
 import numpy as np
 from ultralytics import YOLO
 
+from app.core.ai_device import get_device_manager
+
 
 class PersonDetectionService:
     def __init__(
@@ -14,11 +16,16 @@ class PersonDetectionService:
         min_person_height: int = 80,
         duplicate_iou_threshold: float = 0.85,
         containment_threshold: float = 0.9,
+        device: str | None = None,
     ):
         """
         Load mô hình YOLOv8 một lần và sử dụng cho cả pipeline.
+
+        device: "cuda:0" / "cpu". None = tự động theo DeviceManager.
         """
 
+        self.device_manager = get_device_manager()
+        self.device = device or self.device_manager.resolve_device()
         self.model = YOLO(model_path)
         self.default_imgsz = default_imgsz
         self.default_iou_threshold = default_iou_threshold
@@ -26,6 +33,9 @@ class PersonDetectionService:
         self.min_person_height = min_person_height
         self.duplicate_iou_threshold = duplicate_iou_threshold
         self.containment_threshold = containment_threshold
+        self.use_fp16 = self.device.startswith("cuda")
+        self.default_vid_stride = int(os.getenv("AI_FRAME_STRIDE") or "1")
+        self.default_confidence_boost = 0.0
 
     def detect_persons(
         self,
@@ -54,6 +64,7 @@ class PersonDetectionService:
             iou=self.default_iou_threshold if iou_threshold is None else iou_threshold,
             verbose=False,
             imgsz=self.default_imgsz if imgsz is None else imgsz,
+            device=self.device,
         )
 
         detected_persons: list[dict] = []

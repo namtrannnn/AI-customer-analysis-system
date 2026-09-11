@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.database.session import get_db
-from app.database.session import SessionLocal 
+from app.database.session import SessionLocal
 
 from app.utils.response import error_response, success_response
 from app.routers import camera_router
@@ -29,6 +29,7 @@ from app.routers import daily_statistics_router
 
 from app.services.statistics_service import DailyStatisticsService
 from app.routers import report_router
+from app.core.ai_device import get_ai_device_info, log_ai_device_status
 
 # CẤU HÌNH CRONJOB TỔNG HỢP DỮ LIỆU CUỐI NGÀY
 def run_daily_statistics_job():
@@ -48,6 +49,8 @@ def run_daily_statistics_job():
 # Quản lý vòng đời của ứng dụng FastAPI
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log_ai_device_status()
+
     # Khởi tạo Scheduler bất đồng bộ
     scheduler = AsyncIOScheduler()
     
@@ -141,9 +144,21 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
-@app.get("/")
-def root():
-    return success_response(data=None, message="AI Customer Analysis API is running")
+@app.get("/health")
+def health():
+    info = get_ai_device_info()
+    data = {
+        "status": "ok",
+        "gpu": {
+            "requested_device": info["requested_device"],
+            "selected_device": info["selected_device"],
+            "mode": info["mode"],
+            "cuda_available": info["cuda_available"],
+            "gpu_name": info["gpu_name"],
+            "fallback_reason": info["fallback_reason"],
+        },
+    }
+    return success_response(data=data, message="Sức khỏe hệ thống ổn định")
 
 
 @app.get("/db-test")

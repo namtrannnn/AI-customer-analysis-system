@@ -1967,8 +1967,12 @@ class VideoProcessingPipelineService(
         # ============================================================
         SAMPLE_EVERY_N_OBS = 5
 
+        # Giới hạn face pipeline theo trạng thái track để tránh chạy YuNet/SFace trên mọi frame.
+        # Track mới cần xác nhận thường xuyên hơn; track đã ổn định chỉ kiểm tra định kỳ.
+        UNASSIGNED_FACE_SAMPLE_EVERY_N_OBS = 3
+        ASSIGNED_FACE_SAMPLE_EVERY_N_OBS = 12
+
         # V53: giữ setup stream đạt khoảng 8fps từ bản stream hiện tại,
-        # nhưng toàn bộ identity/case policy bên dưới vẫn dùng camera_pipeline_service.
         CONFIRMED_FACE_SAMPLE_EVERY_N_OBS = 72
         CONFIRMED_FACE_FAST_RECHECK_OBS = 48
         CONFIRMED_FACE_FORCE_RECHECK_IF_BEST_CONF_BELOW = 0.82
@@ -2586,6 +2590,15 @@ class VideoProcessingPipelineService(
             prof_identity_sec = 0.0
             prof_stream_sec = 0.0
             prof_frame_count = 0
+            prof_stage_sec = {
+                "frame_read": 0.0,
+                "tracking": 0.0,
+                "body_reid": 0.0,
+                "appearance": 0.0,
+                "face_detection": 0.0,
+                "face_embedding": 0.0,
+            }
+            prof_stage_calls = {key: 0 for key in prof_stage_sec}
             prev_gray_for_optflow = None
             prev_persons_for_optflow = []
             heavy_tracker_calls = 0
@@ -2666,6 +2679,8 @@ class VideoProcessingPipelineService(
                 frame_prof_t0 = time.perf_counter()
                 stream_processed_frame_count += 1
                 image = cv2.imread(frame_data.image_path)
+                prof_stage_sec["frame_read"] += time.perf_counter() - frame_prof_t0
+                prof_stage_calls["frame_read"] += 1
 
                 if image is None:
                     continue
@@ -2740,6 +2755,8 @@ class VideoProcessingPipelineService(
                 prev_gray_for_optflow = cur_gray_for_optflow
                 prev_persons_for_optflow = [dict(tp) for tp in (tracked_persons or [])]
                 prof_track_sec += time.perf_counter() - track_t0
+                prof_stage_sec["tracking"] += time.perf_counter() - track_t0
+                prof_stage_calls["tracking"] += 1
                 identity_t0 = time.perf_counter()
 
                 # Budget reset: giữ setup hiệu năng từ stream, nhưng không thay đổi policy identity của camera.
@@ -2828,7 +2845,10 @@ class VideoProcessingPipelineService(
                         or obs_count % BODY_REID_SAMPLE_EVERY_N_OBS == 0
                     ):
                         if self._is_valid_person_crop_for_identity(image, bbox):
+                            body_t0 = time.perf_counter()
                             body_sig = self.person_reid_service.extract(image, bbox)
+                            prof_stage_sec["body_reid"] += time.perf_counter() - body_t0
+                            prof_stage_calls["body_reid"] += 1
                             if body_sig is not None:
                                 samples = track_body_reid_samples.setdefault(track_id, [])
                                 samples.append({
@@ -2967,8 +2987,8 @@ class VideoProcessingPipelineService(
 
                     should_sample_face = (
                         obs_count == 1
-                        or obs_count % SAMPLE_EVERY_N_OBS == 0
-                        or not already_assigned
+                        or (not already_assigned and obs_count % UNASSIGNED_FACE_SAMPLE_EVERY_N_OBS == 0)
+                        or (already_assigned and obs_count % ASSIGNED_FACE_SAMPLE_EVERY_N_OBS == 0)
                     )
 
                     if not should_sample_face:
@@ -2980,10 +3000,13 @@ class VideoProcessingPipelineService(
                     appearance_signature = None
 
                     if valid_body_for_identity:
+                        appearance_t0 = time.perf_counter()
                         appearance_signature = self.appearance_service.extract_from_person_crop(
                             frame=image,
                             bbox=bbox,
                         )
+                        prof_stage_sec["appearance"] += time.perf_counter() - appearance_t0
+                        prof_stage_calls["appearance"] += 1
 
                         if appearance_signature is not None:
                             track_best_appearance[track_id] = appearance_signature
@@ -3055,12 +3078,15 @@ class VideoProcessingPipelineService(
                         confidence=p.get("confidence"),
                     )
 
+                    face_t0 = time.perf_counter()
                     face_result = self.face_detector.detect_faces_from_person_detections(
                         person_detections=[person_input],
                         output_dir=output_face_dir,
                         max_faces_per_person=1,
                         min_quality_score=0.0,
                     )
+                    prof_stage_sec["face_detection"] += time.perf_counter() - face_t0
+                    prof_stage_calls["face_detection"] += 1
 
                     if not face_result.faces:
                         if track_id not in track_to_profile:
@@ -3130,9 +3156,12 @@ class VideoProcessingPipelineService(
                     # ====================================================
                     # AI-04: FACE EMBEDDING
                     # ====================================================
+                    embedding_t0 = time.perf_counter()
                     embedding_results = self.face_embedder.extract_embeddings_from_detected_faces(
                         [face]
                     )
+                    prof_stage_sec["face_embedding"] += time.perf_counter() - embedding_t0
+                    prof_stage_calls["face_embedding"] += 1
 
                     if not embedding_results or not embedding_results[0].embedding:
                         track_debug_status[track_id] = "PENDING: embedding failed"
@@ -5158,7 +5187,33 @@ class VideoProcessingPipelineService(
             # ============================================================
             # Không chạy final video pass. Mọi correction đã chạy theo periodic/track-closed event.
             print(f"[TrueDelayedRealtime] realtime_correction_ticks={realtime_correction_ticks}")
-
+            timing_wall_seconds = time.perf_counter() - prof_wall_t0
+            print(
+                "[PipelineTiming] totals_seconds="
+                + str({
+                    **{k: round(v, 3) for k, v in prof_stage_sec.items()},
+                    "identity_logic": round(prof_identity_sec, 3),
+                    "stream_callback": round(prof_stream_sec, 3),
+                    "wall_clock": round(timing_wall_seconds, 3),
+                })
+            )
+            print("[PipelineTiming] calls=" + str({
+                **prof_stage_calls,
+                "frames": prof_frame_count,
+            }))
+            print(
+                "[PipelineTiming] averages_ms="
+                + str({
+                    **{
+                        k: round((prof_stage_sec[k] / prof_stage_calls[k]) * 1000, 2)
+                        for k in prof_stage_sec
+                        if prof_stage_calls[k]
+                    },
+                    "identity_logic": round((prof_identity_sec / max(prof_frame_count, 1)) * 1000, 2),
+                    "stream_callback": round((prof_stream_sec / max(prof_frame_count, 1)) * 1000, 2),
+                    "wall_clock_per_frame": round((timing_wall_seconds / max(prof_frame_count, 1)) * 1000, 2),
+                })
+            )
             # Tách episode muộn khỏi profile lớn trước khi export.
             # Đây không phải hard-code track id; nó dựa trên temporal gap + tail cluster.
             if RUN_FINAL_CLEANUP_AT_EXPORT and EPISODE_SPLIT_ENABLED:
