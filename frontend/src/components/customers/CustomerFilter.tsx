@@ -8,12 +8,18 @@ import {
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
-import { Search, X } from "lucide-react";
+import { Search, X, MapPin } from "lucide-react";
+
+// Import MOCK_PRESENCE để biết IDs đang có mặt
+// Khi có cam: đây sẽ là data từ WebSocket
+import { PRESENCE_IDS } from "@/components/customers/CustomerTable";
 
 interface CustomerFilterProps {
   params: CustomerFilterParams;
   onChange: (params: Partial<CustomerFilterParams>) => void;
   onReset: () => void;
+  onFilterPresence?: () => void; // callback khi click "Đang ở đây"
+  isFilteringPresence?: boolean;
 }
 
 const statusOptions: { value: CustomerStatus | ""; label: string }[] = [
@@ -33,8 +39,11 @@ export default function CustomerFilter({
   params,
   onChange,
   onReset,
+  onFilterPresence,
+  isFilteringPresence = false,
 }: CustomerFilterProps) {
-  const hasFilter = !!params.search || !!params.status || !!params.gender;
+  const hasFilter = !!params.search || !!params.status || !!params.gender || isFilteringPresence;
+  const presenceCount = PRESENCE_IDS.length;
 
   return (
     <div className="flex flex-wrap items-end gap-3">
@@ -51,25 +60,32 @@ export default function CustomerFilter({
         value={params.status ?? ""}
         options={statusOptions}
         ariaLabel="Lọc trạng thái"
-        onChange={(value) =>
-          onChange({
-            status: value,
-            page: 1,
-          })
-        }
+        onChange={(value) => onChange({ status: value, page: 1 })}
       />
 
       <Select<CustomerGender | "">
         value={params.gender ?? ""}
         options={genderOptions}
         ariaLabel="Lọc giới tính"
-        onChange={(value) =>
-          onChange({
-            gender: value,
-            page: 1,
-          })
-        }
+        onChange={(value) => onChange({ gender: value, page: 1 })}
       />
+
+      {/* Filter "Đang ở đây" */}
+      {presenceCount > 0 && (
+        <button
+          type="button"
+          onClick={onFilterPresence}
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition ${
+            isFilteringPresence
+              ? "border-emerald-500 bg-emerald-500 text-white"
+              : "border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+          }`}
+        >
+          <span className="h-1.5 w-1.5 rounded-full bg-current animate-pulse" />
+          <MapPin className="h-3.5 w-3.5" />
+          Đang ở đây ({presenceCount})
+        </button>
+      )}
 
       {hasFilter && (
         <Button

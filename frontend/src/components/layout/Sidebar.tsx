@@ -21,6 +21,7 @@ import {
   Cctv,
   FileDown,
   MoreHorizontal,
+  ShoppingCart,
 } from "lucide-react";
 import { usePermission } from "@/hooks/usePermission";
 import { useState, useRef, useEffect } from "react";
@@ -45,6 +46,7 @@ const itemAccent: Record<string, string> = {
   "/heatmap":        "from-rose-500 to-red-600",
   "/cameras":        "from-sky-500 to-blue-600",
   "/reports":        "from-emerald-500 to-teal-600",
+  "/cashier":        "from-yellow-500 to-amber-500",
 };
 
 const itemIconColor: Record<string, string> = {
@@ -62,6 +64,7 @@ const itemIconColor: Record<string, string> = {
   "/heatmap":        "text-rose-500 dark:text-rose-400",
   "/cameras":        "text-sky-500 dark:text-sky-400",
   "/reports":        "text-emerald-500 dark:text-emerald-400",
+  "/cashier":        "text-yellow-500 dark:text-yellow-400",
 };
 
 // ─── Menu chính — luôn hiển thị ───────────────────────────────────────────────
@@ -75,6 +78,7 @@ const mainMenuItems = [
   { label: "Thời gian lưu trú", href: "/stay-time",    icon: Clock,           desc: "Stay duration metrics",    permission: null },
   { label: "Thống kê khách",  href: "/daily-stats",    icon: TrendingUp,      desc: "Daily visitors report",    permission: null },
   { label: "Phân nhóm AI",    href: "/segments",       icon: Sparkles,        desc: "AI Customer Segments",     permission: null },
+  { label: "Thu ngân",        href: "/cashier",        icon: ShoppingCart,    desc: "Quầy thu ngân",            permission: "cashier.view" },
 ];
 
 // ─── Menu "Xem thêm" — ẩn trong dropdown ─────────────────────────────────────

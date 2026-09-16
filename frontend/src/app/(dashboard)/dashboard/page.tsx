@@ -10,6 +10,7 @@ import StatCard from "@/components/common/StatCard";
 import TrendChart from "@/components/dashboard/TrendChart";
 import ZoneVisitChart from "@/components/dashboard/ZoneVisitChart";
 import AvgDurationChart from "@/components/dashboard/AvgDurationChart";
+import RealtimeCounter from "@/components/dashboard/RealtimeCounter";
 import {
   MOCK_DATA,
   computeStats,
@@ -241,6 +242,9 @@ export default function DashboardPage() {
           {error}
         </div>
       )}
+
+      {/* ── Realtime counter ── */}
+      <RealtimeCounter />
 
       {/* ── Stat cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

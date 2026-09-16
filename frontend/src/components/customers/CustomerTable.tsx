@@ -1,13 +1,24 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Eye, Pencil, Lock } from "lucide-react";
+import { Eye, Pencil, Lock, MapPin } from "lucide-react";
 
 import { Customer } from "@/types/customer.type";
 import { timeAgo } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
+
+// Mock presence — khi có camera thật thay bằng WebSocket/API data
+// TODO: replace với real presence data từ camera pipeline
+// Key: customer_id, Value: zone_name đang ở
+export const MOCK_PRESENCE: Record<number, string> = {
+  1: "Khu trưng bày",
+  3: "Quầy thanh toán",
+};
+
+// Export danh sách IDs để CustomerFilter dùng
+export const PRESENCE_IDS = Object.keys(MOCK_PRESENCE).map(Number);
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -123,6 +134,9 @@ export default function CustomerTable({
             const totalVisits = c.total_visits ?? 0;
             const totalSpent = Number(c.total_spent ?? 0);
             const customerCode = c.customer_code || `CUS-${c.id}`;
+            // Mock: khách hàng đầu tiên trong danh sách simulate "đang ở đây"
+            // Khi có cam: dùng MOCK_PRESENCE[c.id] thật
+            const presenceZone = MOCK_PRESENCE[c.id] ?? null;
 
             return (
               <tr
@@ -147,12 +161,26 @@ export default function CustomerTable({
                     </div>
 
                     <div className="min-w-0">
-                      <p className="line-clamp-1 font-bold text-slate-900 transition group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-300">
-                        {customerName}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="line-clamp-1 font-bold text-slate-900 transition group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-300">
+                          {customerName}
+                        </p>
+                        {presenceZone && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400 shrink-0">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Đang ở đây
+                          </span>
+                        )}
+                      </div>
 
                       <p className="mt-0.5 text-xs font-medium text-slate-400 dark:text-slate-500">
                         {customerCode}
+                        {presenceZone && (
+                          <span className="ml-1.5 inline-flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                            <MapPin className="h-3 w-3" />
+                            {presenceZone}
+                          </span>
+                        )}
                       </p>
                     </div>
                   </div>

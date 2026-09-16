@@ -24,6 +24,19 @@ class PersonProfileVisitSession(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class PersonProfileZoneVisit(BaseModel):
+    id: int
+    zone_id: int
+    zone_name: str
+    zone_color: str | None = None
+    zone_type: str | None = None
+    enter_time: datetime
+    leave_time: datetime | None = None
+    duration_seconds: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PersonProfileBaseResponse(BaseModel):
     id: int
     anonymous_code: str
@@ -45,6 +58,7 @@ class PersonProfileListItem(PersonProfileBaseResponse):
 class PersonProfileDetail(PersonProfileBaseResponse):
     visit_total: int
     visit_sessions: list[PersonProfileVisitSession]
+    zone_visits: list[PersonProfileZoneVisit] = []
 
 
 class PersonProfileStatsResponse(BaseModel):

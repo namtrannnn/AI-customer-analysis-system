@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import CustomerTable from "@/components/customers/CustomerTable";
+import CustomerTable, { MOCK_PRESENCE, PRESENCE_IDS } from "@/components/customers/CustomerTable";
 import CustomerFilter from "@/components/customers/CustomerFilter";
 import {
   CustomerAddModal,
@@ -115,6 +115,8 @@ export default function CustomersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<CustomerFilterParams>(DEFAULT_FILTER);
+  const [filteringPresence, setFilteringPresence] = useState(false);
+  const [presenceCustomers, setPresenceCustomers] = useState<Customer[]>([]);
   const toast = useToast();
   const [addOpen, setAddOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Customer | null>(null);
@@ -160,6 +162,15 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch khách hàng đang có mặt khi bật filter presence
+  useEffect(() => {
+    if (!filteringPresence || PRESENCE_IDS.length === 0) return;
+    // Load tất cả với limit lớn rồi lọc client-side
+    getCustomers({ page: 1, limit: 200 }).then((data) => {
+      setPresenceCustomers(data.data.filter((c) => PRESENCE_IDS.includes(c.id)));
+    }).catch(() => {});
+  }, [filteringPresence]);
 
   function getApiErrorMessage(e: unknown) {
     const err = e as {
@@ -379,8 +390,10 @@ export default function CustomersPage() {
 
           <CustomerFilter
             params={filter}
-            onChange={updateFilter}
-            onReset={resetFilter}
+            onChange={(partial) => { updateFilter(partial); setFilteringPresence(false); }}
+            onReset={() => { resetFilter(); setFilteringPresence(false); }}
+            onFilterPresence={() => setFilteringPresence((v) => !v)}
+            isFilteringPresence={filteringPresence}
           />
         </div>
 
@@ -433,13 +446,22 @@ export default function CustomersPage() {
           <div className="px-4 py-4 sm:px-5">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/40">
               <CustomerTable
-                customers={result?.data ?? []}
+                customers={
+                  filteringPresence
+                    ? presenceCustomers
+                    : (result?.data ?? [])
+                }
                 canEdit={canUpdateCustomer}
                 canDelete={canDeleteCustomer}
                 onEdit={(c) => setEditTarget(c)}
                 onDelete={(c) => setDeleteTarget(c)}
               />
             </div>
+            {filteringPresence && (
+              <p className="mt-2 text-center text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                Đang hiển thị {PRESENCE_IDS.length} khách hàng có mặt trong cửa hàng lúc này
+              </p>
+            )}
           </div>
         )}
 
