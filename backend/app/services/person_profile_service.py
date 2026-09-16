@@ -9,12 +9,15 @@ from app.models.customer import Customer
 from app.models.customer_identity import CustomerIdentity
 from app.models.person_profile import PersonProfile
 from app.models.visit_sessions import VisitSession
+from app.models.zone_visit import ZoneVisit
+from app.models.store_zone import StoreZone
 from app.schemas.person_profile_schema import (
     PersonProfileCustomerSummary,
     PersonProfileDetail,
     PersonProfileListItem,
     PersonProfileStatsResponse,
     PersonProfileVisitSession,
+    PersonProfileZoneVisit,
 )
 
 
@@ -254,6 +257,31 @@ def get_person_profile_detail(
     )
 
     base_item = _profile_item(profile, customer)
+
+    # Lấy zone visits
+    zone_visits_rows = (
+        db.query(ZoneVisit, StoreZone.zone_name, StoreZone.color, StoreZone.zone_type)
+        .join(StoreZone, StoreZone.id == ZoneVisit.zone_id)
+        .filter(ZoneVisit.person_profile_id == profile_id)
+        .order_by(ZoneVisit.enter_time.desc())
+        .limit(50)
+        .all()
+    )
+
+    zone_visits = [
+        PersonProfileZoneVisit(
+            id=zv.id,
+            zone_id=zv.zone_id,
+            zone_name=zone_name,
+            zone_color=color,
+            zone_type=zone_type,
+            enter_time=zv.enter_time,
+            leave_time=zv.leave_time,
+            duration_seconds=zv.duration_seconds,
+        )
+        for zv, zone_name, color, zone_type in zone_visits_rows
+    ]
+
     return PersonProfileDetail(
         **base_item.model_dump(),
         visit_total=visit_total,
@@ -261,4 +289,5 @@ def get_person_profile_detail(
             PersonProfileVisitSession.model_validate(visit)
             for visit in visits
         ],
+        zone_visits=zone_visits,
     )

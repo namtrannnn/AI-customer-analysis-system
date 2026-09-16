@@ -1,5 +1,16 @@
 import { http } from "@/lib/http";
 
+export interface ZoneVisitItem {
+  id: number;
+  zone_id: number;
+  zone_name: string;
+  zone_color: string | null;
+  zone_type: string | null;
+  enter_time: string;
+  leave_time: string | null;
+  duration_seconds: number | null;
+}
+
 export interface VisitHistoryItem {
   id: number;
   entry_time: string;
@@ -23,6 +34,7 @@ export interface VisitorProfile {
   customer_gender: string | null;
   customer_spent: number;
   recent_visits: VisitHistoryItem[];
+  zone_visits: ZoneVisitItem[];
 }
 
 export interface VisitorFilters {
@@ -76,9 +88,21 @@ interface PersonProfileVisitSession {
   created_at: string;
 }
 
+interface PersonProfileZoneVisit {
+  id: number;
+  zone_id: number;
+  zone_name: string;
+  zone_color: string | null;
+  zone_type: string | null;
+  enter_time: string;
+  leave_time: string | null;
+  duration_seconds: number | null;
+}
+
 interface PersonProfileDetail extends PersonProfileListItem {
   visit_total: number;
   visit_sessions: PersonProfileVisitSession[];
+  zone_visits: PersonProfileZoneVisit[];
 }
 
 const FALLBACK_FACE_IMAGE =
@@ -110,6 +134,7 @@ function mapProfile(profile: PersonProfileListItem): VisitorProfile {
     customer_gender: null,
     customer_spent: 0,
     recent_visits: [],
+    zone_visits: [],
   };
 }
 
@@ -117,6 +142,16 @@ function mapProfileDetail(profile: PersonProfileDetail): VisitorProfile {
   return {
     ...mapProfile(profile),
     recent_visits: profile.visit_sessions.map(mapVisitSession),
+    zone_visits: (profile.zone_visits ?? []).map((zv) => ({
+      id: zv.id,
+      zone_id: zv.zone_id,
+      zone_name: zv.zone_name,
+      zone_color: zv.zone_color,
+      zone_type: zv.zone_type,
+      enter_time: zv.enter_time,
+      leave_time: zv.leave_time,
+      duration_seconds: zv.duration_seconds,
+    })),
   };
 }
 
