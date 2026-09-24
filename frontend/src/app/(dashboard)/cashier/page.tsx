@@ -16,7 +16,7 @@ import ForbiddenPage from "@/components/ui/ForbiddenPage";
 import { useToast } from "@/components/ui/ToastProvider";
 import { usePermission } from "@/hooks/usePermission";
 import { formatDateTime } from "@/utils/formatDate";
-import { getCustomers } from "@/services/customer.service";
+import { createCustomer, getCustomers } from "@/services/customer.service";
 import type { Customer } from "@/types/customer.type";
 import {
   getInStoreVisitors,
@@ -26,8 +26,18 @@ import {
   type InStoreVisitor,
   type CreateOrderPayload,
 } from "@/services/cashier.service";
+import { isPointInPolygon, getFeetPosition, type Point } from "@/utils/geometry";
 
 const POLL_INTERVAL = 5000; // 5 giây
+
+// // Tọa độ Vùng Thu Ngân (Demo: góc dưới bên phải camera)
+// // Bạn có thể chỉnh lại cho khớp với camera thực tế
+// const CASHIER_ZONE: Point[] = [
+//   { x: 0.6, y: 0.5 },
+//   { x: 1.0, y: 0.5 },
+//   { x: 1.0, y: 1.0 },
+//   { x: 0.6, y: 1.0 }
+// ];
 
 // ─── Visitor Card ─────────────────────────────────────────────────────────────
 function VisitorCard({
@@ -35,13 +45,30 @@ function VisitorCard({
   selected,
   onClick,
 }: {
-  visitor: InStoreVisitor;
+  // Mở rộng kiểu dữ liệu để TypeScript chấp nhận các thuộc tính mới
+  visitor: InStoreVisitor & { 
+    isAtCashier?: boolean; 
+    entry_video_time?: number; 
+    latest_video_time?: number; 
+  };
   selected: boolean;
   onClick: () => void;
 }) {
-  const entryDate = new Date(visitor.entry_time);
-  const diffMin = Math.round((Date.now() - entryDate.getTime()) / 60000);
-  const timeLabel = diffMin < 1 ? "Vừa vào" : `${diffMin} phút trước`;
+  let timeLabel = "Vừa vào";
+  if (visitor.entry_video_time !== undefined && visitor.latest_video_time !== undefined) {
+    const diffSeconds = Math.max(0, visitor.latest_video_time - visitor.entry_video_time);
+    if (diffSeconds < 60) {
+      timeLabel = `Có mặt: ${Math.floor(diffSeconds)} giây`;
+    } else {
+      const m = Math.floor(diffSeconds / 60);
+      const s = Math.floor(diffSeconds % 60);
+      timeLabel = `Có mặt: ${m}p ${s}s`;
+    }
+  } else {
+    const entryDate = new Date(visitor.entry_time);
+    const diffMin = Math.round((Date.now() - entryDate.getTime()) / 60000);
+    timeLabel = diffMin < 1 ? "Vừa vào" : `${diffMin} phút trước`;
+  }
 
   return (
     <button
@@ -49,11 +76,13 @@ function VisitorCard({
       className={`w-full flex items-center gap-3 rounded-2xl border p-3.5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${
         selected
           ? "border-amber-400 ring-2 ring-amber-400/20 dark:border-amber-500"
-          : ""
+          : visitor.isAtCashier
+            ? "border-red-500 ring-2 ring-red-500/20 animate-pulse bg-red-50/50 dark:bg-red-900/20"
+            : ""
       }`}
       style={{
-        background: "var(--bg-surface)",
-        borderColor: selected ? undefined : "var(--border)",
+        background: visitor.isAtCashier ? undefined : "var(--bg-surface)",
+        borderColor: selected || visitor.isAtCashier ? undefined : "var(--border)",
       }}
     >
       {/* Face */}
@@ -73,7 +102,7 @@ function VisitorCard({
       {/* Info */}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-          {visitor.customer?.full_name ?? visitor.anonymous_code}
+          {visitor.customer?.full_name ?? visitor.anonymous_code.replace(/^LIVE_[A-Z0-9]+_/, "")}
         </p>
         <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>
           {visitor.anonymous_code}
@@ -90,13 +119,21 @@ function VisitorCard({
       </div>
 
       {/* Badge */}
-      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-        visitor.person_type === "identified"
-          ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
-          : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
-      }`}>
-        {visitor.person_type === "identified" ? "Đã nhận diện" : "Ẩn danh"}
-      </span>
+      <div className="flex flex-col items-end gap-1">
+        {visitor.isAtCashier ? (
+          <span className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold bg-red-500 text-white">
+            Ở QUẦY
+          </span>
+        ) : (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+            visitor.person_type === "identified"
+              ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400"
+              : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+          }`}>
+            {visitor.person_type === "identified" ? "Đã nhận diện" : "Ẩn danh"}
+          </span>
+        )}
+      </div>
     </button>
   );
 }
@@ -139,15 +176,11 @@ function IdentifyPanel({
     if (!selectedCustomer) return;
     setLinking(true);
     try {
-      await linkProfileToCustomer(
-        { person_profile_id: visitor.profile_id, customer_id: selectedCustomer.id },
-        {
-          id: selectedCustomer.id,
-          customer_code: selectedCustomer.customer_code ?? "",
-          full_name: selectedCustomer.full_name,
-          phone: selectedCustomer.phone ?? null,
-        },
-      );
+      await linkProfileToCustomer({ 
+          person_profile_id: visitor.profile_id, 
+          customer_id: selectedCustomer.id,
+          ai_session_code: visitor.anonymous_code
+      });
       toast.success(`Đã liên kết với ${selectedCustomer.full_name}`);
       onSuccess({
         ...visitor,
@@ -168,21 +201,46 @@ function IdentifyPanel({
 
   async function handleCreateNew() {
     if (!newName.trim()) { toast.error("Vui lòng nhập họ tên"); return; }
+
+    const phoneValue = newPhone.trim();
+    if (!phoneValue) { 
+      toast.error("Vui lòng nhập số điện thoại"); 
+      return; 
+    }
+    
+    // Regex giống hệt Backend: Bắt đầu bằng 0 hoặc +84, đầu số 3,5,7,8,9 và 8 chữ số tiếp theo
+    const phoneRegex = /^(0|\+84)[35789][0-9]{8}$/;
+    if (!phoneRegex.test(phoneValue)) {
+      toast.error("Số điện thoại không đúng định dạng Việt Nam");
+      return;
+    }
+
     setCreating(true);
     try {
-      // TODO: khi BE xong CASH-06, gọi API tạo customer kèm person_profile_id
-      // Hiện tại mock thành công
-      await new Promise((r) => setTimeout(r, 600));
-      const mockCustomer = {
-        id: Date.now(),
-        customer_code: `CUS${String(Date.now()).slice(-6)}`,
+      // 1. Gọi API tạo khách thật (Đảm bảo API này trả về data chứa ID từ Database)
+      const realCustomer = await createCustomer({
         full_name: newName.trim(),
-        phone: newPhone.trim() || null,
-      };
-      toast.success(`Đã tạo khách hàng "${newName}" và liên kết`);
-      onSuccess({ ...visitor, person_type: "identified", customer: mockCustomer });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Tạo khách hàng thất bại");
+        phone: newPhone.trim() || undefined,
+        gender: newGender,
+        person_profile_id: visitor.profile_id > 0 ? visitor.profile_id : undefined,
+        ai_session_code: visitor.anonymous_code
+      });
+
+      toast.success(`Đã tạo khách hàng "${newName}"`);
+      
+      // 2. lấy realCustomer.id (do Backend trả về) để gán vào state.
+      onSuccess({ 
+        ...visitor, 
+        person_type: "identified", 
+        customer: {
+          id: realCustomer.id, // DÙNG ID THẬT Ở ĐÂY!
+          customer_code: realCustomer.customer_code ?? "",
+          full_name: realCustomer.full_name,
+          phone: realCustomer.phone ?? null,
+        }
+      });
+    } catch (e: any) {
+      toast.error(e.response?.data?.detail || e.message || "Tạo khách hàng thất bại");
     } finally {
       setCreating(false);
     }
@@ -198,7 +256,7 @@ function IdentifyPanel({
           className="h-10 w-10 rounded-lg object-cover"
         />
         <div>
-          <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{visitor.anonymous_code}</p>
+          <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{visitor.anonymous_code.replace(/^LIVE_[A-Z0-9]+_/, "")}</p>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>Vào lúc {formatDateTime(visitor.entry_time)}</p>
         </div>
       </div>
@@ -227,10 +285,15 @@ function IdentifyPanel({
       {tab === "existing" && (
         <div className="space-y-3">
           <Input
-            placeholder="Tìm theo tên, SĐT, mã KH..."
+            placeholder="Nhập số điện thoại khách hàng..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              // BẢN VÁ: Chỉ cho phép nhập số (loại bỏ mọi ký tự không phải số)
+              const onlyNums = e.target.value.replace(/\D/g, "");
+              setSearch(onlyNums);
+            }}
             leftIcon={<Search className="h-4 w-4" />}
+            maxLength={11} // Giới hạn độ dài SĐT tối đa
           />
           {searchLoading && <Loading text="Đang tìm..." />}
           {!searchLoading && customers.length > 0 && (
@@ -251,7 +314,8 @@ function IdentifyPanel({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{c.full_name}</p>
-                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>{c.customer_code} · {c.phone ?? "—"}</p>
+                    {/* BẢN VÁ: Nhấn mạnh vào số điện thoại thay vì mã khách hàng */}
+                    <p className="text-xs font-mono" style={{ color: "var(--text-muted)" }}>{c.phone ?? "Chưa cập nhật SĐT"}</p>
                   </div>
                   {selectedCustomer?.id === c.id && <CheckCircle2 className="h-4 w-4 text-amber-500 shrink-0" />}
                 </button>
@@ -259,10 +323,10 @@ function IdentifyPanel({
             </div>
           )}
           {!searchLoading && search && customers.length === 0 && (
-            <p className="py-4 text-center text-sm" style={{ color: "var(--text-muted)" }}>Không tìm thấy khách hàng</p>
+            <p className="py-4 text-center text-sm" style={{ color: "var(--text-muted)" }}>Không tìm thấy khách hàng với SĐT này</p>
           )}
           {!search && (
-            <p className="py-2 text-center text-xs" style={{ color: "var(--text-muted)" }}>Nhập tên, SĐT hoặc mã để tìm kiếm</p>
+            <p className="py-2 text-center text-xs" style={{ color: "var(--text-muted)" }}>Vui lòng nhập số điện thoại để tìm kiếm</p>
           )}
           <Button
             className="w-full"
@@ -286,8 +350,19 @@ function IdentifyPanel({
             <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nhập họ và tên" />
           </div>
           <div>
-            <label className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Số điện thoại</label>
-            <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="0901234567" />
+            <label className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+              Số điện thoại <span className="text-red-500">*</span>
+            </label>
+            <Input 
+              value={newPhone} 
+              onChange={(e) => {
+                // Tùy chọn: Tự động loại bỏ các ký tự không phải số hoặc dấu + (ngăn nhập chữ)
+                const cleanedValue = e.target.value.replace(/[^\d+]/g, '');
+                setNewPhone(cleanedValue);
+              }} 
+              placeholder="0901234567" 
+              maxLength={12} 
+            />
           </div>
           <div>
             <label className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Giới tính</label>
@@ -338,11 +413,13 @@ function OrderForm({
     setSubmitting(true);
     try {
       const payload: CreateOrderPayload = {
-        person_profile_id: visitor.profile_id,
+        // person_profile_id: visitor.profile_id,
+        person_profile_id: visitor.profile_id > 0 ? visitor.profile_id : null,
         customer_id: visitor.customer?.id ?? null,
         total_amount: numAmount,
         item_summary: description.trim() || undefined,
         payment_method: paymentMethod,
+        ai_session_code: visitor.anonymous_code,
       };
       const result = await createOrder(payload);
       toast.success(`Đã tạo đơn hàng ${result.order_code} — ${numAmount.toLocaleString()}đ`);
@@ -372,7 +449,7 @@ function OrderForm({
         />
         <div>
           <p className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-            {visitor.customer?.full_name ?? visitor.anonymous_code}
+            {visitor.customer?.full_name ?? visitor.anonymous_code.replace(/^LIVE_[A-Z0-9]+_/, "")}
           </p>
           <p className="text-xs" style={{ color: "var(--text-muted)" }}>
             {visitor.customer ? `${visitor.customer.customer_code} · ${visitor.customer.phone ?? "—"}` : "Khách ẩn danh"}
@@ -587,35 +664,263 @@ function RightPanel({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function CashierPage() {
   const { hasPermission } = usePermission();
-  const toast = useToast();
+  const toast = useToast(); // Vẫn giữ để xài cho phần API form (tạo đơn, link user)
 
-  const [visitors, setVisitors] = useState<InStoreVisitor[]>([]);
+  // const [visitors, setVisitors] = useState<(InStoreVisitor & { isAtCashier?: boolean })[]>([]);
+  const [visitors, setVisitors] = useState<(InStoreVisitor & { 
+    isAtCashier?: boolean;
+    entry_video_time?: number;
+    latest_video_time?: number;
+  })[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  
+  const lastUpdateRef = useRef<number>(0);
+
+  const firstSourceTimeRef = useRef<number | null>(null);
+  const startRealTimeRef = useRef<number | null>(null);
+  const eventQueueRef = useRef<any[]>([]); // Hàng đợi chứa các sự kiện chưa tới giờ diễn ra
+  const syncTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selected = visitors.find((v) => v.session_id === selectedId) ?? null;
 
+  // === 1. BỔ SUNG REF LƯU TỌA ĐỘ TỪ API ===
+  const cashierZoneRef = useRef<Point[]>([]);
+
+  // === 2. BỔ SUNG EFFECT GỌI API ===
+  useEffect(() => {
+    async function fetchCashierZone() {
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        
+        // Nối apiUrl vào trước đường dẫn
+        const response = await fetch(`${apiUrl}/api/store-zones?type=cashier`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        // Giả sử API trả về { polygon: [{x: 0.6, y: 0.5}, ...] }
+        if (data?.polygon?.length >= 3) {
+          cashierZoneRef.current = data.polygon;
+        }
+      } catch (error) {
+        console.error("Lỗi tải tọa độ quầy thu ngân:", error);
+      }
+    }
+    fetchCashierZone();
+  }, []);
+
   const fetchVisitors = useCallback(async (silent = false) => {
+    const timeSinceLastFrame = Date.now() - lastUpdateRef.current;
+    
+    // Nếu video đang chạy mượt mà (vừa có frame trong 3 giây qua) -> Bỏ qua API để tránh nhiễu
+    if (timeSinceLastFrame < 3000) return;
+
     if (!silent) setLoading(true);
     try {
-      const { data, total } = await getInStoreVisitors();
-      setVisitors(data);
-      setTotal(total);
+      const { data } = await getInStoreVisitors(); 
+      
+      setVisitors((prev) => {
+        // 1. Ghép data từ DB với state hiện tại (áp dụng cho khách cũ)
+        const mergedFromApi = data.map((newVisitor) => {
+          const existing = prev.find((p) => 
+            p.anonymous_code === newVisitor.anonymous_code || 
+            p.session_id === newVisitor.session_id
+          );
+          
+          return { 
+            ...newVisitor, 
+            isAtCashier: existing?.isAtCashier || false,
+            entry_video_time: existing?.entry_video_time, 
+            latest_video_time: existing?.latest_video_time,
+            face_image_url: existing?.face_image_url || newVisitor.face_image_url,
+            person_type: existing?.person_type === "identified" ? "identified" : newVisitor.person_type
+          };
+        });
+
+        // 2. CHỐT CHẶN DỌN DẸP THÔNG MINH
+        // Nếu video chỉ mới tạm dừng (< 10 giây), tiếp tục giữ lại khách ảo của AI
+        if (timeSinceLastFrame < 10000) {
+            const wsOnlyVisitors = prev.filter(
+              (p) => !data.some((d) => d.anonymous_code === p.anonymous_code || d.session_id === p.session_id)
+            );
+            return [...mergedFromApi, ...wsOnlyVisitors];
+        }
+        
+        // Nếu video đã kết thúc (ngưng quá 10 giây), quét sạch bóng ma AI, chỉ dùng data từ DB
+        return mergedFromApi;
+      });
     } catch (e) {
       if (!silent) toast.error("Không tải được danh sách khách");
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
-  // Initial load + polling 5s
+  // Initial load + polling + WebSocket setup
+  // ==========================================
+  // EFFECT 1: Dành riêng cho Polling API
+  // ==========================================
   useEffect(() => {
     fetchVisitors();
     pollRef.current = setInterval(() => fetchVisitors(true), POLL_INTERVAL);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [fetchVisitors]);
+
+
+  // ==========================================
+  // EFFECT 2: Dành riêng cho WebSocket Realtime (Sử dụng Queue Buffer)
+  // ==========================================
+  useEffect(() => {
+    if (wsRef.current) return;
+
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000";
+    const ws = new WebSocket(`${wsUrl}/api/cashier/ws`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.log("✅ [Thu Ngân] WebSocket đã kết nối!");
+      eventQueueRef.current = [];
+    };
+
+    // 1. WebSocket chỉ làm đúng 1 việc: Nhận data AI và tống vào hàng chờ
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "detection") {
+           eventQueueRef.current.push(msg.data);
+        }
+      } catch (e) {
+        console.error("Lỗi parse WS", e);
+      }
+    };
+
+    // 2. Kênh Lắng nghe Video: Mọi thứ tự động chạy theo nhịp độ của video
+    const channel = new BroadcastChannel("video_sync");
+    
+    channel.onmessage = (e) => {
+      const currentVideoTime = e.data; // Thời gian video lấy từ StreamingOverlay
+
+      const now = Date.now();
+      // Nếu chưa qua 300ms kể từ lần cập nhật trước, bỏ qua để nhường CPU cho Video vẽ khung
+      if (now - lastUpdateRef.current < 300) return; 
+      // Cập nhật lại mốc thời gian
+      lastUpdateRef.current = now;
+      
+      const queue = eventQueueRef.current;
+      if (queue.length === 0) return;
+
+      // Xả hàng: Chỉ lấy những sự kiện có source_timestamp_seconds nhỏ hơn hoặc bằng thời gian video hiện tại
+     const readyItems = queue.filter(item => (item.source_timestamp_seconds || 0) <= currentVideoTime);
+      
+      eventQueueRef.current = queue.filter(item => (item.source_timestamp_seconds || 0) > currentVideoTime);
+
+      if (readyItems.length > 0) {
+        setVisitors((prev) => {
+          let updatedList = [...prev];
+
+          readyItems.forEach((detectionData) => {
+            // Chỉ xử lý và hiển thị những khuôn mặt rõ nét (confidence >= 50%)
+            if ((detectionData.confidence || 0) < 0.50) return;
+            const code = String(detectionData.anonymous_code || "");
+            const realtimeSessionId = -Number(detectionData.track_id);
+            
+            const [x1, y1, x2, y2] = detectionData.bbox || [0, 0, 0, 0];
+            const feetX = (x1 + x2) / 2;
+            const feetY = y2;
+            //const atCashier = isPointInPolygon({ x: feetX, y: feetY }, CASHIER_ZONE);
+            const currentZone = cashierZoneRef.current;
+            const atCashier = currentZone.length >= 3 
+              ? isPointInPolygon({ x: feetX, y: feetY }, currentZone) 
+              : false;
+
+            const index = updatedList.findIndex((v) => 
+               v.session_id === realtimeSessionId || 
+               v.anonymous_code === code || 
+               (detectionData.session_profile_id && v.anonymous_code === detectionData.session_profile_id)
+            );
+
+            if (index >= 0) {
+              // Gộp TẤT CẢ các trường có thể chứa ảnh từ AI để không bị sót
+              const newAvatar = detectionData.face_crop_url 
+                             || detectionData.current_video_avatar 
+                             || detectionData.identified_customer_avatar 
+                             || detectionData.stored_profile_avatar;
+
+              updatedList[index] = { 
+                ...updatedList[index], 
+                isAtCashier: atCashier,
+                // Ưu tiên cập nhật ảnh mới, nếu không có mới dùng lại ảnh cũ
+                face_image_url: newAvatar || updatedList[index].face_image_url,
+                // Nâng cấp trạng thái nếu AI nhận diện ra người quen
+                person_type: detectionData.customer_id ? "identified" : updatedList[index].person_type,
+                latest_video_time: detectionData.source_timestamp_seconds,
+              };
+
+              // Cập nhật tên thật nếu AI nhận ra (từ ANON -> identified)
+              if (detectionData.customer_id) {
+                 updatedList[index].customer = {
+                    id: detectionData.customer_id,
+                    full_name: detectionData.customer_name,
+                    customer_code: detectionData.customer_code,
+                    phone: null
+                 };
+              }
+
+              if (/^(?:LIVE_.*_)?(P|ANON)_\d+$/i.test(code)) {
+                updatedList[index].anonymous_code = code;
+              }
+            } else {
+              if (/^(?:LIVE_.*_)?(P|ANON)_\d+$/i.test(code)) {
+                 updatedList.push({
+                    session_id: realtimeSessionId,
+                    entry_time: new Date().toISOString(),
+                    profile_id: realtimeSessionId,
+                    anonymous_code: code,
+                    person_type: (detectionData.customer_id ? "identified" : "anonymous") as "identified" | "anonymous",
+                    face_image_url: detectionData.face_crop_url 
+                                 || detectionData.current_video_avatar 
+                                 || detectionData.identified_customer_avatar 
+                                 || detectionData.stored_profile_avatar 
+                                 || null,
+                    customer: detectionData.customer_id ? {
+                       id: detectionData.customer_id,
+                       full_name: detectionData.customer_name,
+                       customer_code: "N/A",
+                       phone: null
+                    } : null,
+                    isAtCashier: atCashier,
+                    entry_video_time: detectionData.source_timestamp_seconds,
+                    latest_video_time: detectionData.source_timestamp_seconds,
+                 } as any);
+              }
+            }
+          });
+          updatedList = updatedList.filter(v => {
+            if (v.latest_video_time !== undefined) {
+               // Xóa ngay những ai không xuất hiện trong camera quá 2 giây
+               return (currentVideoTime - v.latest_video_time) < 2.0;
+            }
+            // Khách từ DB (không có dữ liệu live): Xóa luôn nhường chỗ cho AI quét
+            return false; 
+          });
+          return updatedList;
+        });
+      }
+    };
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      channel.close();
+    };
+  }, []);
 
   if (!hasPermission("cashier.view")) {
     return (
@@ -628,7 +933,7 @@ export default function CashierPage() {
   }
 
   function handleIdentifySuccess(updated: InStoreVisitor) {
-    setVisitors((prev) => prev.map((v) => v.session_id === updated.session_id ? updated : v));
+    setVisitors((prev) => prev.map((v) => v.session_id === updated.session_id ? { ...updated, isAtCashier: v.isAtCashier } : v));
   }
 
   function handleOrderSuccess() {
@@ -638,6 +943,7 @@ export default function CashierPage() {
 
   const identified = visitors.filter((v) => v.person_type === "identified").length;
   const anonymous = visitors.filter((v) => v.person_type === "anonymous").length;
+  const realtimeTotal = visitors.length
 
   return (
     <div className="flex h-[calc(100vh-120px)] flex-col gap-5">
@@ -668,9 +974,9 @@ export default function CashierPage() {
       {/* Stats */}
       <div className="grid shrink-0 grid-cols-3 gap-3">
         {[
-          { label: "Đang trong cửa hàng", value: total,      color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-500/10",   icon: <Users className="h-5 w-5" /> },
-          { label: "Đã nhận diện",         value: identified, color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/10", icon: <UserCheck className="h-5 w-5" /> },
-          { label: "Ẩn danh",              value: anonymous,  color: "text-slate-600 dark:text-slate-400",   bg: "bg-slate-100 dark:bg-slate-800",       icon: <Users className="h-5 w-5" /> },
+          { label: "Đang trong cửa hàng", value: realtimeTotal,  color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-50 dark:bg-amber-500/10",   icon: <Users className="h-5 w-5" /> },
+          { label: "Đã nhận diện",         value: identified,     color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-50 dark:bg-emerald-500/10", icon: <UserCheck className="h-5 w-5" /> },
+          { label: "Ẩn danh",              value: anonymous,      color: "text-slate-600 dark:text-slate-400",   bg: "bg-slate-100 dark:bg-slate-800",       icon: <Users className="h-5 w-5" /> },
         ].map((s) => (
           <div key={s.label} className="flex items-center gap-3 rounded-2xl p-4"
             style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
@@ -697,7 +1003,7 @@ export default function CashierPage() {
             style={{ borderBottom: "1px solid var(--border)" }}
           >
             <h2 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>
-              Danh sách khách ({total})
+              Danh sách khách ({realtimeTotal})
             </h2>
             <div className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -716,7 +1022,8 @@ export default function CashierPage() {
               />
             ) : (
               <div className="space-y-2">
-                {visitors.map((v) => (
+                {/* Sort ưu tiên người đang ở quầy lên đầu */}
+                {[...visitors].sort((a, b) => (b.isAtCashier ? 1 : 0) - (a.isAtCashier ? 1 : 0)).map((v) => (
                   <VisitorCard
                     key={v.session_id}
                     visitor={v}

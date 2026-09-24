@@ -1,4 +1,5 @@
 import time
+import uuid
 
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
@@ -44,16 +45,11 @@ def create_anonymous_profile(db: Session, payload: AnonymousCreate) -> PersonPro
 
 # LUỒNG 2: Nhân viên tạo khách hàng chính thức tại quầy (Thêm khách hàng)
 def create_customer(db: Session, payload: CustomerCreate) -> Customer:
-    # 1. Kiểm tra số điện thoại và Email
     if payload.phone and db.query(Customer).filter(Customer.phone == payload.phone).first():
         raise HTTPException(status_code=400, detail="Số điện thoại này đã được đăng ký.")
 
-    if payload.email and db.query(Customer).filter(Customer.email == payload.email).first():
-        raise HTTPException(status_code=400, detail="Email này đã được đăng ký.")
-
-    # 2. Tạo record Khách hàng
-    customer_data = payload.model_dump(exclude={"person_profile_id", "captured_avatar_url"})
-    if payload.captured_avatar_url:
+    customer_data = payload.model_dump(exclude={"person_profile_id", "ai_session_code", "captured_avatar_url"})
+    if hasattr(payload, 'captured_avatar_url') and payload.captured_avatar_url:
         customer_data["avatar_url"] = payload.captured_avatar_url
 
     new_customer = Customer(
@@ -62,30 +58,16 @@ def create_customer(db: Session, payload: CustomerCreate) -> Customer:
         status="active" 
     )
     db.add(new_customer)
-    db.flush() # Lưu tạm để lấy new_customer.id
+    db.flush()
 
-    # 3. Logic xử lý PersonProfile và Identity
     if payload.person_profile_id:
-        # TH1: Khách đã bị camera bắt dạng ẩn danh trước đó
+        # TH1: Khách đã có Profile thật (Thường không dùng lúc Live)
         person_profile = db.query(PersonProfile).filter(PersonProfile.id == payload.person_profile_id).first()
         if not person_profile:
             db.rollback()
             raise HTTPException(status_code=404, detail="Không tìm thấy dữ liệu khuôn mặt ẩn danh này.")
-        # Kiểm tra xem hồ sơ này đã được định danh cho khách khác chưa
-        existing_identity = db.query(CustomerIdentity).filter(
-            CustomerIdentity.person_profile_id == payload.person_profile_id
-        ).first()
-        
-        if existing_identity:
-            db.rollback()
-            raise HTTPException(
-                status_code=400, 
-                detail="Khuôn mặt này đã được định danh cho một khách hàng khác trong hệ thống."
-            )
-
+            
         person_profile.person_type = "identified"
-
-        #Kế thừa số lượt ghé thăm từ hồ sơ camera
         new_customer.total_visits = person_profile.total_visits
         
         identity = CustomerIdentity(
@@ -97,43 +79,43 @@ def create_customer(db: Session, payload: CustomerCreate) -> Customer:
         )
         db.add(identity)
     else:
-        # TH2: Khách chưa từng bị camera bắt (vd: đăng ký qua mạng hoặc camera hỏng lúc vào)
-        # Phải tự động tạo PersonProfile để camera có ID tracking về sau
+        # TH2: Khách đang đi Live (Chưa chốt AI) hoặc khách mới tinh
+        # Gán một mã tạm thời để vượt qua lỗi NOT NULL của Database
+        temp_code = f"TEMP_{uuid.uuid4().hex[:8].upper()}"
+        
         new_profile = PersonProfile(
-            anonymous_code=generate_anonymous_code("USR"),
+            anonymous_code=temp_code, # <--- ĐÃ SỬA CHỖ NÀY
             person_type="identified",
             first_seen_at=func.now(),
             last_seen_at=func.now(),
             total_visits=0
         )
         db.add(new_profile)
-        db.flush()
+        db.flush() # Lưu tạm thành công, DB đã cấp phát ID mới!
+        
+        # Format chuẩn ANON_xxxxxxxx
+        new_profile.anonymous_code = f"ANON_{int(new_profile.id):08d}"
+
+        # ĐÁNH DẤU VẾT VÀO CỘT NOTE ĐỂ AI TÌM LẠI CUỐI VIDEO
+        note_str = f"LIVE_SESSION:{payload.ai_session_code}" if payload.ai_session_code else "Tạo tự động khi nhân viên thêm khách hàng mới"
 
         identity = CustomerIdentity(
             person_profile_id=new_profile.id,
             customer_id=new_customer.id,
             identification_method="system_generated",
             confidence_score=1.0,
-            note="Tạo tự động khi nhân viên thêm khách hàng mới"
+            note=note_str
         )
         db.add(identity)
 
-    # 4. Commit toàn bộ transaction
     try:
         db.commit()
         db.refresh(new_customer)
         return new_customer
     except IntegrityError as e:
         db.rollback()
-        
-        # Lấy thông báo lỗi gốc từ database (nếu có), nếu không thì lấy chuỗi lỗi mặc định
-        error_message = str(e.orig) if hasattr(e, 'orig') else str(e)
-        
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Lỗi dữ liệu đầu vào. Vui lòng kiểm tra lại. Chi tiết: {error_message}"
-        )
-
+        raise HTTPException(status_code=400, detail="Lỗi dữ liệu đầu vào.")
+    
 # CUS-API-02-06-07: Xem danh sách khách hàng + lọc + tìm kiếm
 def get_list_customers(
     db: Session, 
@@ -160,17 +142,25 @@ def get_list_customers(
     if gender_param:
         query = query.filter(Customer.gender == gender_param)
         
-    # Đắp điều kiện tìm kiếm từ khóa (nếu có)
+    # =================================================================
+    # BẢN VÁ: THUẬT TOÁN TÌM KIẾM THÔNG MINH (Ưu tiên quét SĐT)
+    # =================================================================
     if search_query:
-        search_pattern = f"%{search_query}%"
-        query = query.filter(
-            or_(
-                Customer.full_name.ilike(search_pattern),
-                Customer.phone.ilike(search_pattern),
-                Customer.email.ilike(search_pattern),
-                Customer.customer_code.ilike(search_pattern)
+        search_term = search_query.strip()
+        # Nếu Frontend gửi lên toàn số -> Chỉ tập trung quét cột SĐT cho siêu nhanh
+        if search_term.isdigit():
+            query = query.filter(Customer.phone.like(f"%{search_term}%"))
+        # Nếu gửi lên chữ -> Quét toàn bộ như cũ để giữ tính năng cho trang Quản lý
+        else:
+            search_pattern = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    Customer.full_name.ilike(search_pattern),
+                    Customer.phone.ilike(search_pattern),
+                    Customer.email.ilike(search_pattern),
+                    Customer.customer_code.ilike(search_pattern)
+                )
             )
-        )
         
     # thực thi truy vấn với phân trang
     return query.order_by(Customer.id.desc()).offset(skip).limit(limit).all()
@@ -193,16 +183,23 @@ def count_list_customers(
     if gender_param:
         query = query.filter(Customer.gender == gender_param)
         
+    # =================================================================
+    # BẢN VÁ: Áp dụng thuật toán tìm kiếm tương tự cho hàm đếm
+    # =================================================================
     if search_query:
-        search_pattern = f"%{search_query}%"
-        query = query.filter(
-            or_(
-                Customer.full_name.ilike(search_pattern),
-                Customer.phone.ilike(search_pattern),
-                Customer.email.ilike(search_pattern),
-                Customer.customer_code.ilike(search_pattern)
+        search_term = search_query.strip()
+        if search_term.isdigit():
+            query = query.filter(Customer.phone.like(f"%{search_term}%"))
+        else:
+            search_pattern = f"%{search_term}%"
+            query = query.filter(
+                or_(
+                    Customer.full_name.ilike(search_pattern),
+                    Customer.phone.ilike(search_pattern),
+                    Customer.email.ilike(search_pattern),
+                    Customer.customer_code.ilike(search_pattern)
+                )
             )
-        )
         
     return query.count()
 

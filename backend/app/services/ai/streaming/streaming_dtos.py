@@ -43,6 +43,8 @@ class DetectionResult:
     observation_count: int = 0
     confidence: Optional[float] = None
     operation: str = "upsert"
+    face_path: Optional[str] = None
+    embedding: Optional[List[float]] = None
 
     @classmethod
     def create(cls, **kwargs: Any) -> "DetectionResult":

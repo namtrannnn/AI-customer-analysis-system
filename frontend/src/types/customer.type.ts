@@ -68,6 +68,7 @@ export interface CustomerCreatePayload {
   note?: string;
   avatar_url?: string;
   person_profile_id?: number;
+  ai_session_code?: string;
 }
 
 export interface CustomerUpdatePayload extends Partial<CustomerCreatePayload> {}

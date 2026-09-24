@@ -146,6 +146,8 @@ class StreamingVideoPipelineService:
                     status=str(person.get("status") or ""),
                     observation_count=int(person.get("observation_count", 0) or 0),
                     confidence=person.get("confidence"),
+                    face_path=person.get("face_path"),
+                    embedding=person.get("embedding")
                 )
                 detections.append(detection)
                 if self.detection_sink is not None:

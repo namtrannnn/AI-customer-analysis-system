@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from realtime import Optional
 from sqlalchemy.orm import Session
 from typing import Any
 
@@ -144,3 +145,16 @@ def get_order_history(
         message="Lấy lịch sử mua hàng thành công",
         total=total, skip=skip, limit=limit
     )
+
+@router.get("", response_model=schemas.CustomerListResponse)
+def get_customers_api(
+    search: Optional[str] = Query(None, description="Tìm kiếm theo SĐT, tên hoặc mã KH"),
+    page: int = Query(1, ge=1, description="Số trang hiện tại"),
+    limit: int = Query(10, ge=1, le=100, description="Số lượng mỗi trang"),
+    db: Session = Depends(get_db),
+    current_user = Depends(RequirePermission("customer.view"))
+):
+    """
+    Lấy danh sách khách hàng có hỗ trợ tìm kiếm và phân trang.
+    """
+    return services.customer_service.get_customers(db=db, search=search, page=page, limit=limit)

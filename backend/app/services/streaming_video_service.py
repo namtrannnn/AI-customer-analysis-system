@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import cv2
 import logging
 import os
@@ -33,6 +34,7 @@ from app.services.video_service_streaming_integrated import (
     unsubscribe_video_processing,
 )
 from app.utils.supabase_client import supabase
+from app.models.order import Order
 
 
 MAX_VIDEO_SIZE = 50 * 1024 * 1024
@@ -207,7 +209,10 @@ class StreamingVideoService:
         context: dict[str, Any],
         event: dict[str, Any],
     ) -> None:
-        # BE-04: Cập nhật tiến độ mỗi frame để API status và WebSocket cùng thay đổi.
+        import base64
+        import os
+
+        # Cập nhật tiến độ video
         processed_frames = int(event.get("processed_frames") or 0)
         total_frames = int(event.get("total_frames") or 0)
         progress_percent = int(round(float(event.get("progress_percent") or 0.0)))
@@ -227,17 +232,12 @@ class StreamingVideoService:
             or event.get("frame_index")
             or 0
         )
-        event_source_timestamp_seconds = event.get(
-            "source_timestamp_seconds"
-        )
+        event_source_timestamp_seconds = event.get("source_timestamp_seconds")
         if event_source_timestamp_seconds is None:
             event_source_timestamp_seconds = (
                 float(event_source_frame_index) / event_source_fps
             )
 
-        # Progress phải mang timestamp video nguồn ngay cả khi frame không có người.
-        # Nếu chỉ cập nhật timestamp qua detection, frontend sẽ pause ở các đoạn
-        # không có người hoặc detection đang TEMP/PENDING.
         processing_job_manager.update_progress(job_id, {
             "current_frame": processed_frames,
             "total_frames": total_frames,
@@ -253,10 +253,16 @@ class StreamingVideoService:
         if event_source_fps > 0:
             context["video_fps"] = event_source_fps
 
+        # TẠO BỘ NHỚ ĐỆM CHO ẢNH
+        if "sent_avatars" not in context:
+            context["sent_avatars"] = {}
+
         person_list = event.get("detections") or event.get("persons") or []
         for person in person_list:
             bbox = self._normalize_stream_bbox(person.get("bbox") or [], context)
+            track_id = int(person.get("track_id") or -1)
 
+            # === ĐOẠN NÀY RẤT QUAN TRỌNG ĐỂ KHÔNG BỊ LỖI DATA ===
             source_frame_index = int(
                 person.get("source_frame_index")
                 or person.get("frame_index")
@@ -272,21 +278,37 @@ class StreamingVideoService:
                 source_timestamp_seconds = (
                     float(source_frame_index) / max(event_source_fps, 1.0)
                 )
+            # ====================================================
 
-            # 1. Trích xuất embedding từ payload AI
-            embedding = person.get("embedding") 
+            # 1. QUÉT VÉT ẢNH THÔNG MINH (CHỈ GỬI KHI CÓ ẢNH MỚI)
+            raw_avatar = person.get("face_path") or person.get("face_image_path") or person.get("current_video_avatar") or person.get("face_crop_url")
+            avatar_b64 = None
+            
+            if raw_avatar and isinstance(raw_avatar, str) and os.path.exists(raw_avatar):
+                if context["sent_avatars"].get(track_id) != raw_avatar:
+                    try:
+                        with open(raw_avatar, "rb") as f:
+                            avatar_b64 = "data:image/jpeg;base64," + base64.b64encode(f.read()).decode("utf-8")
+                        context["sent_avatars"][track_id] = raw_avatar
+                    except Exception:
+                        pass
+
+            # 2. QUÉT VÉT VECTOR
+            embedding = person.get("embedding") or person.get("feature") or person.get("vector")
 
             data = {
                 "frame_index": source_frame_index,
                 "source_frame_index": source_frame_index,
                 "source_timestamp_seconds": max(0.0, float(source_timestamp_seconds)),
                 "source_fps": event_source_fps,
-                "track_id": int(person.get("track_id") or -1),
+                "track_id": track_id,
                 "anonymous_code": person.get("anonymous_code"),
                 "confidence": float(person.get("confidence") or 0.0),
                 "bbox": bbox,
-                "embedding": embedding # 2. Truyền embedding vào data để xử lý tiếp
+                "embedding": embedding,             
+                "current_video_avatar": avatar_b64,
             }
+            
             enriched = self._handle_detection_event(db, job, context, data)
             if enriched:
                 processing_job_manager.publish(job_id, {"type": "detection", "data": enriched})
@@ -337,18 +359,34 @@ class StreamingVideoService:
         context: dict[str, Any],
         data: dict[str, Any],
     ) -> dict[str, Any] | None:
+
+        # =====================================================================
+        # 1. TẠO MÃ LIVE ĐỘC NHẤT (GLOBALLY UNIQUE) TỪ JOB_ID
+        # =====================================================================
+        base_code = data.get("anonymous_code") or ""
         
-        anonymous_code = data.get("anonymous_code") or ""
+        # Chỉ gắn prefix nếu base_code có thật và chưa được gắn
+        if base_code and not base_code.startswith("LIVE_"):
+            # Lấy 6 ký tự đầu của job_id để làm mã phiên (VD: 9F8E7D)
+            session_prefix = str(job.job_id)[:6].upper()
+            
+            # Kết quả: "DEMO_9F8E7D_P_0004"
+            anonymous_code = f"LIVE_{session_prefix}_{base_code}"
+        else:
+            anonymous_code = base_code
+        
         anonymous_code_str = str(anonymous_code).upper()
         track_id = int(data.get("track_id") or 0)
         confidence = float(data.get("confidence") or 0.0)
+        base_code_str = str(base_code).upper()
 
         # 1. Chặn mã TEMP hiển thị
-        is_temp = anonymous_code_str.startswith("TEMP") or not anonymous_code or "PENDING" in anonymous_code_str
+        is_temp = base_code_str.startswith("TEMP") or not anonymous_code or "PENDING" in anonymous_code_str
         identity_status = "PENDING" if is_temp else "CONFIRMED"
 
         # Tận dụng hàm quét vét cạn mọi key của service để tìm embedding
-        embedding = global_customer_identity_service.extract_profile_embedding(data)
+        #embedding = global_customer_identity_service.extract_profile_embedding(data)
+        embedding = data.get("embedding")
 
         # =================================================================
         # ĐẶT MÁY NGHE LÉN LOG (DEBUG) - HÃY NHÌN VÀO TERMINAL CỦA BACKEND
@@ -359,32 +397,74 @@ class StreamingVideoService:
         # =================================================================
 
         # 2. Xử lý nhận diện sớm (Early Recognition)
-        if track_id not in context["early_identities"]:
-            if confidence >= 0.85 and embedding is not None:
+        current_time = time.time()
+        early_info = context["early_identities"].setdefault(track_id, {})
+        last_attempt = early_info.get("last_attempt_time", 0)
+        
+        # --- BƯỚC 1: TÍCH LŨY DỮ LIỆU ---
+        # Nếu AI bắt được khuôn mặt tương đối nét, gom vector vào "túi"
+        if embedding is not None and confidence >= 0.50:
+            history = early_info.get("history_vectors", [])
+            
+            # Nếu túi đã có dữ liệu, phải kiểm duyệt vector mới
+            if len(history) > 0:
+                # Tính khuôn mặt trung bình hiện tại
+                current_centroid = np.mean(np.stack(history, axis=0), axis=0)
+                
+                # So sánh vector mới với khuôn mặt trung bình (Cosine Similarity)
+                # Giả định các vector đã được hàm normalize() chuẩn hóa
+                similarity = np.dot(current_centroid, embedding)
+                
+                # Nếu khuôn mặt mới giống khuôn mặt cũ từ 70% trở lên -> Cho vào túi
+                if similarity >= 0.70:
+                    history.append(embedding)
+                else:
+                    # NẾU KHÁC BIỆT QUÁ LỚN -> Bị AI gắn nhầm mặt người khác -> BỎ QUA!
+                    print(f"⚠️ [ANTI-DRIFT] Phát hiện nhiễu ở Track {track_id}, độ lệch quá cao ({similarity:.2f}). Đã loại bỏ!")
+            else:
+                # Nếu túi trống (khung hình đầu tiên), cứ cho vào bình thường
+                history.append(embedding)
+            
+            # Chỉ giữ tối đa 15 vector xịn nhất
+            if len(history) > 15:
+                history.pop(0)
+            early_info["history_vectors"] = history
+
+        # --- BƯỚC 2: QUÉT BẰNG VECTOR TỔNG HỢP ---
+        # Chỉ quét khi: Chưa chốt khách + Đã gom đủ ít nhất 3 vector + Qua giây cooldown
+        history = early_info.get("history_vectors", [])
+        
+        if not early_info.get("customer_id") and len(history) >= 3:
+            if current_time - last_attempt > 10.0:
+                early_info["last_attempt_time"] = current_time
+                context["early_identities"][track_id] = early_info
+                
+                # TÍNH TRUNG BÌNH CỘNG (CENTROID) THỜI GIAN THỰC
+                smoothed_embedding = np.mean(np.stack(history, axis=0), axis=0)
+                
                 gallery = context.get("gallery", {})
                 
+                # Mang cái vector siêu nét này đi quét!
                 match_result = global_customer_identity_service.match_embedding(
-                    embedding=embedding,
+                    embedding=smoothed_embedding,
                     gallery=gallery
                 )
                 
-                print(f"[EARLY-RECOG DEBUG] Track {track_id} so sánh DB -> Matched: {match_result.matched} | P_ID: {match_result.person_profile_id} | Điểm khớp: {match_result.best_similarity:.4f}")
-
                 if match_result and match_result.matched and match_result.person_profile_id:
                     person = db.get(PersonProfile, match_result.person_profile_id)
                     customer = self._get_customer_for_profile(db, person.id) if person else None
                     
-                    context["early_identities"][track_id] = {
+                    context["early_identities"][track_id].update({
+                        "person_profile_id": int(person.id) if person else None,
                         "customer_id": customer.id if customer else None,
                         "customer_name": customer.full_name if customer else None,
                         "customer_type": "returning" if customer else "new",
                         "stored_profile_avatar": person.face_image_url if person else None,
                         "identified_customer_avatar": customer.avatar_url if customer else None,
                         "session_profile_id": str(person.anonymous_code) if person else None,
-                    }
-                else:
-                    context["early_identities"][track_id] = {"customer_type": "new"}
-
+                        "total_visits": int(person.total_visits or 1) if person else 1,
+                    })
+                
         early_info = context["early_identities"].get(track_id, {})
         
         display_code = early_info.get("session_profile_id") or str(anonymous_code)
@@ -412,12 +492,18 @@ class StreamingVideoService:
             "identity_status": "CONFIRMED" if early_info.get("session_profile_id") else identity_status, 
             "confidence": confidence,
             "bbox": data.get("bbox") or [],
-            "customer_type": early_info.get("customer_type") or "new",
+            "customer_type": early_info.get("customer_type") or "pending",
             "customer_id": early_info.get("customer_id"),
             "customer_name": early_info.get("customer_name"),
             "stored_profile_avatar": early_info.get("stored_profile_avatar"),
             "identified_customer_avatar": early_info.get("identified_customer_avatar"),
-            "current_video_avatar": None, 
+            # "current_video_avatar": data.get("current_video_avatar"), 
+            # "face_crop_url": data.get("current_video_avatar"), 
+            # Lấy ảnh Base64 truyền thẳng xuống Frontend
+            "current_video_avatar": data.get("current_video_avatar"),
+            "face_crop_url": data.get("current_video_avatar"),
+            "person_profile_id": early_info.get("person_profile_id"),
+            "total_visits": early_info.get("total_visits"),
         }
 
     def _finalize_job_data(
@@ -576,11 +662,16 @@ class StreamingVideoService:
         session_profile_mapping: dict[str, dict[str, Any]] = {}
         track_identity_mapping: dict[str, dict[str, Any]] = {}
 
+        session_prefix = str(job.job_id)[:6].upper()
+
         for session_pid, result in identity_by_session.items():
+            live_session_code = f"LIVE_{session_prefix}_{session_pid}"
+
             person = db.get(PersonProfile, int(result.person_profile_id))
             if person is None:
                 continue
 
+            # 1. Lúc này AI profile chưa nối dây -> customer sẽ là None
             customer = self._get_customer_for_profile(db, person.id)
 
             identity_payload = {
@@ -597,6 +688,105 @@ class StreamingVideoService:
                 "current_video_avatar": None,
             }
             session_profile_mapping[session_pid] = identity_payload
+            
+            if not person.anonymous_code:
+                person.anonymous_code = f"ANON_{int(person.id):08d}"
+                db.add(person)
+                
+            # 2. Xử lý hợp nhất khuôn mặt (Avatar)
+            try:
+                dummy_identity = db.query(CustomerIdentity).filter(
+                    CustomerIdentity.note == f"LIVE_SESSION:{live_session_code}"
+                ).first()
+
+                if dummy_identity:
+                    dummy_profile_id = dummy_identity.person_profile_id
+                    current_customer_id = dummy_identity.customer_id
+                    
+                    # ========================================================
+                    # BẢN VÁ: KIỂM TRA TRÙNG LẶP TRƯỚC KHI UPDATE 
+                    # Để chống lỗi UniqueViolation (uq_customer_identities)
+                    # ========================================================
+                    existing_link = db.query(CustomerIdentity).filter(
+                        CustomerIdentity.person_profile_id == person.id,
+                        CustomerIdentity.customer_id == current_customer_id
+                    ).first()
+
+                    if existing_link:
+                        # TH1: Thu ngân đã liên kết tay trước đó. Cặp (person.id, customer_id) đã tồn tại.
+                        # Ta chỉ ghi chú thêm vết lịch sử và XÓA bản ghi tạm (dummy) đi để tránh rác.
+                        existing_link.note += " | AI xác nhận hợp nhất ở cuối video"
+                        db.delete(dummy_identity)
+                    else:
+                        # TH2: Thu ngân chưa đụng vào. Cặp này chưa tồn tại.
+                        # Ta nối dây sang Profile AI bình thường.
+                        dummy_identity.person_profile_id = person.id
+                        dummy_identity.note = "Đã hợp nhất với best_avatar từ AI cuối video"
+                    
+                    person.person_type = "identified"
+                    
+                    # ========================================================
+                    # BẢN VÁ LỖI 1: Lấy lại thông tin customer ngay sau khi nối dây!
+                    # ========================================================
+                    customer = db.get(Customer, current_customer_id)
+                    
+                    # Xóa hồ sơ khuôn mặt bù nhìn (bản ghi rác sinh ra lúc Live)
+                    dummy_profile = db.get(PersonProfile, dummy_profile_id)
+                    if dummy_profile:
+                        db.delete(dummy_profile)
+                        
+                    print(f"🔄 [MERGE-AVATAR] Hợp nhất thành công cho mã {live_session_code}")
+            except Exception as e:
+                print(f"❌ [MERGE-AVATAR LỖI]: {e}")
+
+            # 3. Xử lý cập nhật hồi tố đơn hàng
+            try:
+                # ========================================================
+                # BẢN VÁ LỖI 2: Cập nhật an toàn, không ghi đè mất customer_id
+                # ========================================================
+                update_data = {"person_profile_id": person.id}
+                if customer:
+                    update_data["customer_id"] = customer.id
+
+                # BẢN VÁ: Dùng .in_() để lùng sục cả mã tạm (LIVE_) lẫn mã chính thức (ANON_)
+                updated_count = db.query(Order).filter(
+                    Order.ai_session_code.in_([live_session_code, str(person.anonymous_code)]),
+                    Order.person_profile_id.is_(None)
+                ).update(update_data, synchronize_session=False)
+
+                if updated_count > 0:
+                    cust_name = customer.full_name if customer else person.anonymous_code
+                    print(f"🔄 [RETRO-UPDATE] Đã liên kết {updated_count} đơn hàng của '{live_session_code}' cho khách {cust_name}")
+
+            except Exception as e:
+                print(f"❌ [RETRO-UPDATE LỖI] {e}")
+
+            # =====================================================================
+            # TỰ ĐỘNG ĐỒNG BỘ THỐNG KÊ CHO KHÁCH HÀNG (TOTALS)
+            # =====================================================================
+            if customer:
+                try:
+                    from sqlalchemy import func
+                    # Dùng AI đếm tổng đơn và tổng chi tiêu thực tế trong Database
+                    stats = db.query(
+                        func.count(Order.id),
+                        func.coalesce(func.sum(Order.total_amount), 0.0)
+                    ).filter(Order.customer_id == customer.id).first()
+
+                    if stats:
+                        customer.total_orders = stats[0]
+                        customer.total_spent = stats[1]
+
+                    # Cập nhật số lần ghé thăm dựa trên Profile của AI
+                    if person.total_visits is not None:
+                        customer.total_visits = person.total_visits
+
+                    db.add(customer)
+                    print(f"✅ [SYNC-STATS] Đã cập nhật thống kê cho khách {customer.full_name}: {customer.total_orders} đơn, {customer.total_spent}đ")
+                except Exception as e:
+                    print(f"❌ [SYNC-STATS LỖI] Không thể cập nhật thống kê: {e}")
+
+        db.commit()
 
         for track_id, session_pid in final_track_to_profile.items():
             identity_payload = session_profile_mapping.get(str(session_pid))
