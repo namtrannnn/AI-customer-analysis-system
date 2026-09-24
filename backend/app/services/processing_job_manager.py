@@ -51,6 +51,7 @@ class ProcessingJobManager:
         self._jobs: dict[str, ProcessingJobState] = {}
         self._lock = asyncio.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
+        self.global_subscribers = {}
 
     def bind_loop(self) -> None:
         try:
@@ -137,6 +138,13 @@ class ProcessingJobManager:
         for queue in list(job.subscribers):
             self._put_event(queue, event)
 
+        if hasattr(self, 'global_subscribers'):
+            for sub_id, cb in list(self.global_subscribers.items()):
+                try:
+                    cb(event)
+                except Exception:
+                    pass
+
     def cleanup_temp_file(self, job_id: str) -> None:
         job = self.get_job(job_id)
         if not job:
@@ -162,5 +170,12 @@ class ProcessingJobManager:
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(put_now)
 
+    def subscribe_global(self, callback) -> str:
+        sub_id = str(uuid.uuid4())
+        self.global_subscribers[sub_id] = callback
+        return sub_id
+
+    def unsubscribe_global(self, sub_id: str):
+        self.global_subscribers.pop(sub_id, None)
 
 processing_job_manager = ProcessingJobManager()

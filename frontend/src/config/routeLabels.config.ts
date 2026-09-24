@@ -7,4 +7,5 @@ export const routeLabels: Record<string, string> = {
   profile:     "Trang cá nhân",
   videos:      "Video AI",
   zones:       "Vùng theo dõi",
+  cashier:     "Thu ngân",
 };

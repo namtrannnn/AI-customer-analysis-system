@@ -69,15 +69,12 @@ function isFinalIdentityResolved(
 
   // Global identity đã xử lý khi có PersonProfile toàn cục
   // và customer_type đã mang kết luận new/returning.
-  return (
-    detection.person_profile_id != null &&
-    [
-      "new",
-      "new_customer",
-      "returning",
-      "returning_customer",
-    ].includes(normalizedType)
-  );
+  return [
+    "new",
+    "new_customer",
+    "returning",
+    "returning_customer",
+  ].includes(normalizedType);
 }
 
 export default function LiveDetectionsList({
@@ -95,6 +92,8 @@ export default function LiveDetectionsList({
       const anonCode = String(detection.anonymous_code || "").toUpperCase();
       const sessionCode = String(detection.session_profile_id || "").toUpperCase();
       const statusCode = String(detection.identity_status || "").toUpperCase();
+
+      const confidence = Number.isFinite(detection.confidence) ? detection.confidence : 0;
       
       const isTrash = 
         anonCode.includes("TEMP") || sessionCode.includes("TEMP") ||
@@ -103,7 +102,7 @@ export default function LiveDetectionsList({
         statusCode === "NEW_TRACK" || statusCode === "PENDING" || statusCode === "RECHECK";
 
       // Nếu chứa mã tạm, lập tức bỏ qua, không render thẻ này
-      if (isTrash && statusCode !== "CONFIRMED") {
+      if (isTrash && statusCode !== "CONFIRMED" || confidence < 0.50) {
         continue;
       }
       
@@ -223,19 +222,22 @@ export default function LiveDetectionsList({
               const identityResolved =
                 isFinalIdentityResolved(detection);
 
+              // Kiểm tra xem khách có mã ẩn danh thật từ Database hay không (Bắt đầu bằng ANON_)
+              const hasRealAnonId = 
+                (detection.session_profile_id && detection.session_profile_id.startsWith("ANON_")) ||
+                (detection.anonymous_code && detection.anonymous_code.startsWith("ANON_"));
+
+              // Khách cũ = Có type 'returning' HOẶC đã tra ra được mã ANON_ thật
               const isReturning =
                 identityResolved &&
-                [
+                ([
                   "returning",
                   "returning_customer",
-                ].includes(normalizedCustomerType);
+                ].includes(normalizedCustomerType) || hasRealAnonId);
 
+              // Khách mới = Đã chốt kết quả (identityResolved) nhưng không phải khách cũ
               const isNew =
-                identityResolved &&
-                [
-                  "new",
-                  "new_customer",
-                ].includes(normalizedCustomerType);
+                identityResolved && !isReturning;
 
               const isPending =
                 !isIdentified &&
@@ -254,7 +256,7 @@ export default function LiveDetectionsList({
                 : 0;
 
               const displayCode =
-                detection.anonymous_code ||
+                detection.anonymous_code.replace(/^LIVE_[A-Z0-9]+_/, "") ||
                 detection.session_profile_id ||
                 `Track ${detection.track_id}`;
 
@@ -299,7 +301,7 @@ export default function LiveDetectionsList({
                           ? `Đã định danh: ${displayCode}`
                           : isReturning
                             ? `Khách quay lại · ${
-                                detection.total_visits ?? 2
+                                detection.total_visits ?? 1
                               } lượt`
                             : isNew
                               ? "Khách ẩn danh mới"

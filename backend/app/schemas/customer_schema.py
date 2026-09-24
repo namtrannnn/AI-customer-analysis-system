@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 import re
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from realtime import List, Optional
 
 # Schema nhận dữ liệu khi camera tạo khách ẩn danh
 class AnonymousCreate(BaseModel):
@@ -76,6 +77,9 @@ class CustomerCreate(CustomerBase):
     
     # URL ảnh khuôn mặt cắt từ camera để dùng làm avatar nếu có
     captured_avatar_url: str | None = None
+    ai_session_code: Optional[str] = None
+    full_name: str
+    phone: Optional[str] = None
 
 class CustomerUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=2, max_length=100)
@@ -122,5 +126,14 @@ class CustomerResponse(CustomerBase):
     total_spent: Decimal
     created_at: datetime
     updated_at: datetime | None
+    full_name: str
+    phone: Optional[str]
+    gender: Optional[str]
 
     model_config = ConfigDict(from_attributes=True)
+
+class CustomerListResponse(BaseModel):
+    total: int
+    page: int
+    limit: int
+    data: List[CustomerResponse]

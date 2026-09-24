@@ -4,7 +4,7 @@ import json
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Iterable, Optional
 
 import numpy as np
@@ -380,28 +380,23 @@ class GlobalCustomerIdentityService:
         if vector is None or not gallery:
             return GalleryMatch(None, 0.0, 0.0, 0.0, False)
 
-        profile_scores: list[tuple[int, float]] = []
-
         excluded = excluded_profile_ids or set()
+        profile_scores: list[tuple[int, float]] = []
 
         for profile_id, samples in gallery.items():
             if int(profile_id) in excluded:
                 continue
-
-            similarities = [
-                float(np.dot(vector, sample))
-                for sample in samples
-                if sample is not None
-            ]
-            if not similarities:
-                continue
-
-            similarities.sort(reverse=True)
+                
+            # ĐIỀU CHỈNH: Tính tích vô hướng của vector với toàn bộ ma trận samples 1 lúc
+            sample_matrix = np.array(samples)
+            similarities = np.dot(sample_matrix, vector)
+            
+            # Sắp xếp và lấy top 3
+            similarities[::-1].sort()
             top = similarities[: min(3, len(similarities))]
-            # Kết hợp best và trung bình top để giảm match nhầm do một outlier.
-            score = 0.72 * top[0] + 0.28 * (
-                sum(top) / len(top)
-            )
+            
+            # Công thức tính điểm giữ nguyên
+            score = 0.72 * top[0] + 0.28 * (sum(top) / len(top))
             profile_scores.append((int(profile_id), float(score)))
 
         if not profile_scores:
@@ -421,6 +416,7 @@ class GlobalCustomerIdentityService:
             and (
                 len(profile_scores) == 1
                 or margin >= self.min_margin
+                or best_score >= 1.00
             )
         )
 
@@ -491,9 +487,11 @@ class GlobalCustomerIdentityService:
         self,
         db: Session,
     ) -> dict[int, list[np.ndarray]]:
+        six_months_ago = datetime.now() - timedelta(days=180)
         rows = (
             db.query(FaceEmbedding)
             .filter(FaceEmbedding.embedding.isnot(None))
+            .filter(FaceEmbedding.captured_at >= six_months_ago)
             .order_by(
                 FaceEmbedding.person_profile_id.asc(),
                 FaceEmbedding.quality_score.desc(),

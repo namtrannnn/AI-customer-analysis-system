@@ -41,6 +41,14 @@ class Order(Base):
         index=True,
     )
     
+    # === BỔ SUNG CỘT NÀY: Lưu mã Live (VD: P_0006) để AI map lại data cuối video ===
+    ai_session_code: Mapped[str | None] = mapped_column(
+        String(50),
+        nullable=True,
+        index=True,
+    )
+    # ==============================================================================
+    
     total_amount: Mapped[float] = mapped_column(
         Numeric(12, 2),
         nullable=False,

@@ -1900,13 +1900,14 @@ class VideoProcessingPipelineService(
         progress_percent: float,
         frame_records,
         annotated_frame_path: str = None,
+        track_best_identity_sample: Dict[int, Dict] = None, 
     ) -> Dict:
         """
-        V20: payload cho frontend sau mỗi frame. UI nên phát video theo playback clock riêng, không block callback.
-        Frontend dùng payload này để update bbox, tracking id, anonymous code và progress.
+        V20: payload cho frontend sau mỗi frame...
         """
         persons = []
         for r in frame_records or []:
+            track_id = int(r.get("track_id"))
             display_stage = str(r.get("display_stage") or "PENDING")
             display_profile_id = r.get("display_profile_id")
             anonymous_code = display_profile_id or display_stage
@@ -1916,14 +1917,29 @@ class VideoProcessingPipelineService(
                 or r.get("best_face_confidence")
                 or 0.0
             )
+
+            face_path = None
+            embedding = None
+            if track_best_identity_sample and track_id in track_best_identity_sample:
+                sample = track_best_identity_sample[track_id]
+                face_path = sample.get("face_image_path")
+                raw_emb = sample.get("embedding")
+                
+                # --- CHỐT CHẶN DỮ LIỆU ---
+                # Ép kiểu Numpy Array sang List chuẩn của Python để Pydantic/JSON không cắt bỏ
+                if raw_emb is not None:
+                    embedding = raw_emb.tolist() if hasattr(raw_emb, "tolist") else list(raw_emb)
+
             persons.append({
-                "track_id": int(r.get("track_id")),
+                "track_id": track_id,
                 "bbox": [float(v) for v in (r.get("bbox") or [])],
                 "anonymous_code": anonymous_code,
                 "confidence": confidence,
                 "display_stage": display_stage,
                 "status": r.get("display_text") or r.get("debug_status_snapshot") or display_stage,
                 "observation_count": int(r.get("observation_count", 0) or 0),
+                "face_path": face_path,  
+                "embedding": embedding,  
             })
 
         return {
@@ -5133,6 +5149,7 @@ class VideoProcessingPipelineService(
                         progress_percent=progress_percent,
                         frame_records=current_stream_records,
                         annotated_frame_path=annotated_frame_path,
+                        track_best_identity_sample=track_best_identity_sample,
                     )
                     if stream_callback is not None:
                         stream_callback(payload, annotated_frame)

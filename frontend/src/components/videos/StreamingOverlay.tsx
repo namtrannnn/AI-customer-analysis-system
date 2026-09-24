@@ -418,6 +418,24 @@ export default function StreamingOverlay({
     };
   }, [videoElement]);
 
+  useEffect(() => {
+    if (!videoElement) return;
+
+    const channel = new BroadcastChannel("video_sync");
+
+    // Lắng nghe sự kiện native của trình duyệt, không dùng vòng lặp cưỡng bức
+    const handleTimeUpdate = () => {
+      channel.postMessage(videoElement.currentTime);
+    };
+
+    videoElement.addEventListener("timeupdate", handleTimeUpdate);
+
+    return () => {
+      videoElement.removeEventListener("timeupdate", handleTimeUpdate);
+      channel.close();
+    };
+  }, [videoElement]);
+
   const displayDetections = useMemo(
     () =>
       Array.from(displayByTrack.values()).sort(
@@ -458,6 +476,12 @@ export default function StreamingOverlay({
           // Cấu hình màu sắc theo trạng thái định danh
           let themeColor = "border-slate-400 bg-slate-500/10";
           let labelBg = "bg-slate-500";
+          
+          // Cắt gọn session_profile_id (VD: LIVE_9F8E7D_P_0004 -> P_0004)
+          const shortSessionId = detection.session_profile_id 
+              ? detection.session_profile_id.replace(/^LIVE_[A-Z0-9]+_/, "") 
+              : "";
+              
           let labelText = "TRACKING";
 
           if (status === "PENDING") {
@@ -475,23 +499,31 @@ export default function StreamingOverlay({
           } else if (status === "CONFIRMED") {
             themeColor = "border-indigo-500 bg-indigo-500/10 shadow-[0_0_15px_rgba(99,102,241,0.3)]";
             labelBg = "bg-indigo-500";
-            labelText = detection.session_profile_id || `P-ID PENDING`;
+            // Dùng biến đã cắt ngắn ở đây
+            labelText = shortSessionId || `P-ID PENDING`;
           }
 
+          // Dùng biến đã cắt ngắn ở đây
           const displayLabel = isConfirmed 
-            ? (detection.customer_name || detection.session_profile_id || `TRK-${detection.track_id}`)
+            ? (detection.customer_name || shortSessionId || `TRK-${detection.track_id}`)
             : `${labelText} [${detection.track_id}]`;
+
+          // Tính toán chính xác số Pixel thay vì dùng phần trăm (%)
+          const leftPx = x1 * scale.width;
+          const topPx = y1 * scale.height;
+          const widthPx = boxWidth * scale.width;
+          const heightPx = boxHeight * scale.height;
 
           return (
             <div
               key={detection.track_id}
-              className="absolute transition-all duration-75 pointer-events-none"
+              className="absolute pointer-events-none transition-all duration-75 ease-linear"
               style={{
-                // --- CẬP NHẬT BIẾN Ở ĐÂY ---
-                left: `${x1 * 100}%`,
-                top: `${y1 * 100}%`,
-                width: `${boxWidth * 100}%`,
-                height: `${boxHeight * 100}%`,
+                // Ép trình duyệt dùng GPU bằng translate3d
+                transform: `translate3d(${leftPx}px, ${topPx}px, 0)`,
+                width: `${widthPx}px`,
+                height: `${heightPx}px`,
+                willChange: "transform", // Cảnh báo trước cho trình duyệt để tối ưu bộ nhớ
               }}
             >
               <div className={`absolute inset-0 border-[1.5px] ${themeColor}`}></div>
