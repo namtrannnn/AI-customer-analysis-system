@@ -3,6 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+import { NotificationProvider } from "@/context/NotificationContext";
+import { NotificationToast } from "@/components/notifications/NotificationToast";
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -58,7 +61,12 @@ export default function RootLayout({
       </head>
       <body className="min-h-full">
         <ThemeProvider>
-          <ToastProvider>{children}</ToastProvider>
+          <ToastProvider>
+            <NotificationProvider>
+              {children}
+              <NotificationToast />
+            </NotificationProvider>
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

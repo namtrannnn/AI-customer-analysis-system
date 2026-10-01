@@ -10,9 +10,8 @@ import Button from "@/components/ui/Button";
 import Select from "@/components/ui/Select";
 import { Search, X, MapPin } from "lucide-react";
 
-// Import MOCK_PRESENCE để biết IDs đang có mặt
-// Khi có cam: đây sẽ là data từ WebSocket
-import { PRESENCE_IDS } from "@/components/customers/CustomerTable";
+// Import getPresenceIds để biết IDs đang có mặt (realtime từ BroadcastChannel)
+import { getPresenceIds } from "@/components/customers/CustomerTable";
 
 interface CustomerFilterProps {
   params: CustomerFilterParams;
@@ -43,7 +42,7 @@ export default function CustomerFilter({
   isFilteringPresence = false,
 }: CustomerFilterProps) {
   const hasFilter = !!params.search || !!params.status || !!params.gender || isFilteringPresence;
-  const presenceCount = PRESENCE_IDS.length;
+  const presenceCount = getPresenceIds().length;
 
   return (
     <div className="flex flex-wrap items-end gap-3">

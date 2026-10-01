@@ -404,7 +404,9 @@ function OrderForm({
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit() {
-    const numAmount = parseFloat(amount.replace(/,/g, ""));
+    // Loại bỏ cả dấu chấm (.) và dấu phẩy (,) khi nhập dạng 10.000 hoặc 10,000
+    const cleanAmount = amount.replace(/[\.,]/g, "");
+    const numAmount = parseFloat(cleanAmount);
     if (!amount || isNaN(numAmount) || numAmount < 0) {
       toast.error("Vui lòng nhập tổng tiền hợp lệ (>= 0)");
       return;
@@ -468,6 +470,9 @@ function OrderForm({
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0"
             type="number"
+            min="0"
+            onWheel={(e) => e.currentTarget.blur()}
+            className="pr-14 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
           <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold" style={{ color: "var(--text-muted)" }}>
             VND

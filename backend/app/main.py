@@ -14,6 +14,7 @@ from app.database.session import SessionLocal
 from app.utils.response import error_response, success_response
 from app.routers import camera_router
 from app.routers import customer_router
+from app.routers import dashboard_router
 from app.routers import user_router
 from app.routers import auth_router
 from app.routers import role_router
@@ -30,6 +31,7 @@ from app.routers import daily_statistics_router
 from app.services.statistics_service import DailyStatisticsService
 from app.routers import report_router
 from app.routers import cashier_router
+from app.routers import notification_router
 from app.routers import store_zone_router
 
 # CẤU HÌNH CRONJOB TỔNG HỢP DỮ LIỆU CUỐI NGÀY
@@ -91,6 +93,7 @@ app.add_middleware(
 )
 
 app.include_router(camera_router.router)
+app.include_router(dashboard_router.router)
 app.include_router(customer_router.router)
 app.include_router(user_router.router)
 app.include_router(auth_router.router)
@@ -107,6 +110,7 @@ app.include_router(daily_statistics_router.router)
 app.include_router(person_profile_router.router)
 app.include_router(report_router.router)
 app.include_router(cashier_router.router)
+app.include_router(notification_router.router)
 app.include_router(store_zone_router.router, prefix="/api/store-zones", tags=["Store Zones"])
 
 # Xử lý các lỗi chủ động ném ra (raise HTTPException)

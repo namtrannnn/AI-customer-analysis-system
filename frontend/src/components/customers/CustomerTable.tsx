@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Eye, Pencil, Lock, MapPin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { Customer } from "@/types/customer.type";
 import { timeAgo } from "@/utils/formatDate";
@@ -9,16 +10,54 @@ import { formatCurrency } from "@/utils/formatCurrency";
 import Button from "@/components/ui/Button";
 import EmptyState from "@/components/ui/EmptyState";
 
-// Mock presence — khi có camera thật thay bằng WebSocket/API data
-// TODO: replace với real presence data từ camera pipeline
-// Key: customer_id, Value: zone_name đang ở
-export const MOCK_PRESENCE: Record<number, string> = {
-  1: "Khu trưng bày",
-  3: "Quầy thanh toán",
-};
+// ─── Presence store — cập nhật realtime từ BroadcastChannel "visitor_count" ──
+// Khi video đang chạy: LiveDetectionsList broadcast identified customers
+// Khi video dừng: map tự xóa sau timeout
+// Key: customer_id, Value: zone_name (hoặc null nếu chưa biết zone)
+const _presenceMap = new Map<number, string | null>();
 
-// Export danh sách IDs để CustomerFilter dùng
-export const PRESENCE_IDS = Object.keys(MOCK_PRESENCE).map(Number);
+export function getPresenceMap(): Map<number, string | null> {
+  return _presenceMap;
+}
+
+// Cho phép customers/page subscribe để trigger re-render
+type PresenceListener = () => void;
+const _listeners = new Set<PresenceListener>();
+
+export function subscribePresence(fn: PresenceListener) {
+  _listeners.add(fn);
+  return () => _listeners.delete(fn);
+}
+
+function notifyListeners() {
+  _listeners.forEach((fn) => fn());
+}
+
+// Global BroadcastChannel listener (init 1 lần)
+if (typeof window !== "undefined") {
+  const ch = new BroadcastChannel("visitor_count");
+  ch.onmessage = (e) => {
+    const { identified } = e.data as {
+      count: number;
+      identified?: { customer_id: number; customer_name: string; zone_name: string | null }[];
+      timestamp: number;
+    };
+    _presenceMap.clear();
+    (identified ?? []).forEach((p) => {
+      _presenceMap.set(p.customer_id, p.zone_name);
+    });
+    notifyListeners();
+  };
+}
+
+// Export để CustomerFilter dùng
+export function getPresenceIds(): number[] {
+  return Array.from(_presenceMap.keys());
+}
+
+// Giữ exports cũ để không break customers/page.tsx
+export const MOCK_PRESENCE: Record<number, string> = {};
+export const PRESENCE_IDS: number[] = [];
 
 interface CustomerTableProps {
   customers: Customer[];
@@ -98,6 +137,9 @@ export default function CustomerTable({
   onDelete,
 }: CustomerTableProps) {
   const router = useRouter();
+  const [, setTick] = useState(0);
+  // Re-render khi presence thay đổi (video detect khách mới)
+  useEffect(() => subscribePresence(() => setTick((n) => n + 1)), []);
 
   if (customers.length === 0) {
     return (
@@ -134,9 +176,8 @@ export default function CustomerTable({
             const totalVisits = c.total_visits ?? 0;
             const totalSpent = Number(c.total_spent ?? 0);
             const customerCode = c.customer_code || `CUS-${c.id}`;
-            // Mock: khách hàng đầu tiên trong danh sách simulate "đang ở đây"
-            // Khi có cam: dùng MOCK_PRESENCE[c.id] thật
-            const presenceZone = MOCK_PRESENCE[c.id] ?? null;
+            // Lấy presence từ BroadcastChannel realtime thay vì mock
+            const presenceZone = _presenceMap.get(c.id) ?? null;
 
             return (
               <tr

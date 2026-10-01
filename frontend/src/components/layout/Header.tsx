@@ -3,9 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import { Bell, ChevronDown, FileText } from "lucide-react";
+import { Bell, ChevronDown, FileText, Volume2, VolumeX, CheckCheck, Trash2, UserCheck, UserX, UserPlus } from "lucide-react";
 import { ThemeToggleSimple } from "./ThemeToggle";
 import Image from "next/image";
+import { useNotification } from "@/context/NotificationContext";
 
 import { logout } from "@/services/auth.service";
 import { routeLabels } from "@/config/routeLabels.config";
@@ -70,17 +71,158 @@ function useBreadcrumbs() {
 // }
 
 function NotificationBell() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const {
+    notifications,
+    unreadCount,
+    soundEnabled,
+    toggleSound,
+    markAllAsRead,
+    clearAll,
+  } = useNotification();
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   return (
-    <button
-      aria-label="Thông báo"
-      className="group relative flex h-10 w-10 items-center justify-center rounded-2xl border border-theme surface text-secondary transition-all duration-200 hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] hover:shadow-md"
-    >
-      <Bell className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-rotate-12" />
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label="Thông báo"
+        className="group relative flex h-10 w-10 items-center justify-center rounded-2xl border border-theme surface text-secondary transition-all duration-200 hover:bg-[var(--bg-surface-2)] hover:text-[var(--text-primary)] hover:shadow-md"
+      >
+        <Bell className="h-[18px] w-[18px] transition-transform duration-200 group-hover:-rotate-12" />
 
-      <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-[var(--bg-page)]" />
+        {unreadCount > 0 && (
+          <>
+            <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-[var(--bg-page)]">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+            <span className="absolute -top-1 -right-1 h-5 w-5 animate-ping rounded-full bg-red-400 opacity-75" />
+          </>
+        )}
+      </button>
 
-      <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 animate-ping rounded-full bg-red-400 opacity-60" />
-    </button>
+      {/* Notification Dropdown Popover */}
+      {open && (
+        <div className="absolute right-0 top-12 z-[9999] w-80 sm:w-96 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.25)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7)] animate-in fade-in zoom-in-95 duration-150">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-3">
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                Thông báo Realtime
+              </h3>
+              {unreadCount > 0 && (
+                <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-[10px] font-bold text-blue-600 dark:bg-blue-500/20 dark:text-blue-400">
+                  {unreadCount} mới
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={toggleSound}
+                className="flex h-8 w-8 items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-blue-500 transition-colors"
+                title={soundEnabled ? "Tắt âm thanh (Mute)" : "Bật âm thanh (Sound On)"}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="h-4 w-4 text-blue-500" />
+                ) : (
+                  <VolumeX className="h-4 w-4 text-slate-400" />
+                )}
+              </button>
+
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={markAllAsRead}
+                  className="flex h-8 w-8 items-center justify-center rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-emerald-500 transition-colors"
+                  title="Đánh dấu đã đọc tất cả"
+                >
+                  <CheckCheck className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* List */}
+          <div className="mt-3 max-h-80 overflow-y-auto space-y-2.5 pr-1">
+            {notifications.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                <Bell className="mx-auto h-8 w-8 text-slate-300 dark:text-slate-700 mb-2 opacity-50" />
+                Chưa có thông báo phát hiện mới
+              </div>
+            ) : (
+              notifications.map((n) => (
+                <div
+                  key={n.id}
+                  className={`group relative flex items-start gap-3 rounded-xl p-3 transition-all ${
+                    n.read
+                      ? "bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-800 opacity-80 hover:opacity-100"
+                      : "bg-blue-50/95 dark:bg-blue-950/60 border border-blue-200/90 dark:border-blue-800/80 shadow-xs"
+                  }`}
+                >
+                  <div
+                    className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-xs ${
+                      n.person_type === "identified"
+                        ? "bg-purple-100 text-purple-600 dark:bg-purple-500/20 dark:text-purple-400"
+                        : "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400"
+                    }`}
+                  >
+                    {n.person_type === "identified" ? (
+                      <UserCheck className="h-4.5 w-4.5" />
+                    ) : (
+                      <UserPlus className="h-4.5 w-4.5" />
+                    )}
+                  </div>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-1">
+                      <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                        {n.title}
+                      </p>
+                      <span className="text-[10px] font-medium text-slate-400 shrink-0">
+                        {n.timestamp}
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-xs font-medium text-slate-700 dark:text-slate-300 line-clamp-2">
+                      {n.message}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Footer */}
+          {notifications.length > 0 && (
+            <div className="mt-3 border-t border-slate-100 dark:border-slate-800 pt-2 flex items-center justify-between text-xs">
+              <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                {soundEnabled ? "🔊 Âm thanh: Đang bật" : "🔇 Âm thanh: Đang tắt"}
+              </span>
+              <button
+                type="button"
+                onClick={clearAll}
+                className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-red-500 transition-colors"
+              >
+                <Trash2 className="h-3 w-3" /> Xóa tất cả
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

@@ -11,9 +11,12 @@ from app.models.customer_segment import CustomerSegment
 from app.models.customer_identity import CustomerIdentity
 from app.models.customer import Customer
 from app.models.order import Order
+from app.models.zone_visit import ZoneVisit
+from app.models.store_zone import StoreZone
 from app.schemas.report_schema import (
     ReportDataDTO, ReportSummary, DailyReportData,
     CustomerReportData, ReportType,
+    SegmentReportData, ZoneReportData, DurationBucketData,
 )
 
 
@@ -122,41 +125,125 @@ def _get_customers(db: Session, start_date: date, end_date: date) -> list[Custom
     ]
 
 
+def _get_segments(db: Session) -> list[SegmentReportData]:
+    """Lấy thống kê phân nhóm AI từ customer_segments."""
+    segments = db.query(CustomerSegment).all()
+    result = []
+    for seg in segments:
+        rule = seg.rule_definition or {}
+        stats = rule.get("statistics") or {}
+        result.append(SegmentReportData(
+            segment_name=seg.segment_name,
+            member_count=int(stats.get("member_count") or 0),
+            avg_visits=float(stats.get("avg_visits") or 0),
+            avg_duration_seconds=int(float(stats.get("avg_duration") or 0)),
+            avg_spent=float(stats.get("avg_spent") or 0),
+        ))
+    return [s for s in result if s.member_count > 0]
+
+
+def _get_zones(db: Session, start_date: date, end_date: date) -> list[ZoneReportData]:
+    """Lấy thống kê lượt ghé và thời gian theo từng zone."""
+    from sqlalchemy import extract
+    zones = db.query(StoreZone).all()
+    result = []
+    for zone in zones:
+        visits = db.query(ZoneVisit).filter(
+            ZoneVisit.zone_id == zone.id,
+            ZoneVisit.enter_time >= start_date,
+            ZoneVisit.enter_time <= end_date,
+        ).all()
+        if not visits:
+            continue
+        total_visits = len(visits)
+        avg_dur = int(
+            sum(v.duration_seconds or 0 for v in visits) / total_visits
+        ) if total_visits else 0
+        # Tìm giờ đông nhất
+        hour_counts: dict[int, int] = {}
+        for v in visits:
+            h = v.enter_time.hour
+            hour_counts[h] = hour_counts.get(h, 0) + 1
+        peak_h = max(hour_counts, key=lambda h: hour_counts[h]) if hour_counts else None
+        peak_str = f"{peak_h:02d}:00 - {peak_h:02d}:59" if peak_h is not None else None
+        result.append(ZoneReportData(
+            zone_name=zone.zone_name,
+            zone_type=zone.zone_type,
+            color=zone.color,
+            total_visits=total_visits,
+            avg_duration_seconds=avg_dur,
+            peak_hour=peak_str,
+        ))
+    return sorted(result, key=lambda z: z.total_visits, reverse=True)
+
+
+def _get_duration_buckets(db: Session, start_date: date, end_date: date) -> list[DurationBucketData]:
+    """Phân phối thời gian lưu trú vào các bucket."""
+    sessions = db.query(VisitSession).filter(
+        VisitSession.entry_time >= start_date,
+        VisitSession.entry_time <= end_date,
+        VisitSession.duration_seconds.isnot(None),
+        VisitSession.duration_seconds > 0,
+    ).all()
+
+    if not sessions:
+        return []
+
+    buckets = [
+        ("< 5 phút",      0,    300),
+        ("5 - 15 phút",   300,  900),
+        ("15 - 30 phút",  900,  1800),
+        ("30 - 60 phút",  1800, 3600),
+        ("> 60 phút",     3600, 999999),
+    ]
+    total = len(sessions)
+    result = []
+    for label, lo, hi in buckets:
+        count = sum(1 for s in sessions if lo <= (s.duration_seconds or 0) < hi)
+        result.append(DurationBucketData(
+            label=label,
+            count=count,
+            pct=round(count / total * 100, 1) if total else 0,
+        ))
+    return result
+
+
 def get_report_data(
     db: Session,
     start_date: date,
     end_date: date,
     report_type: ReportType = ReportType.summary,
 ) -> ReportDataDTO:
-    """
-    Lấy dữ liệu báo cáo theo loại:
-    - summary:  tất cả chỉ số + danh sách khách
-    - activity: chỉ số lượt khách & thời gian
-    - customer: danh sách khách hàng
-    - revenue:  chỉ số đơn hàng & doanh thu
-    """
-    daily_list: list[DailyReportData] = []
-    customers:  list[CustomerReportData] = []
+    daily_list:       list[DailyReportData]    = []
+    customers:        list[CustomerReportData] = []
+    segments:         list[SegmentReportData]  = []
+    zones:            list[ZoneReportData]     = []
+    duration_buckets: list[DurationBucketData] = []
 
-    # ── Lấy daily stats (dùng cho summary, activity, revenue) ────────────────
     if report_type in (ReportType.summary, ReportType.activity, ReportType.revenue):
         daily_list = _get_daily_stats(db, start_date, end_date)
 
-    # ── Lấy danh sách khách (dùng cho summary, customer) ─────────────────────
     if report_type in (ReportType.summary, ReportType.customer):
         customers = _get_customers(db, start_date, end_date)
 
-    # ── Validate: không có data nào cả ───────────────────────────────────────
-    if not daily_list and not customers:
+    if report_type in (ReportType.summary, ReportType.segment):
+        segments = _get_segments(db)
+
+    if report_type in (ReportType.summary, ReportType.zone):
+        zones = _get_zones(db, start_date, end_date)
+
+    if report_type in (ReportType.summary, ReportType.duration):
+        duration_buckets = _get_duration_buckets(db, start_date, end_date)
+
+    # Validate — ít nhất phải có 1 trong các list
+    has_data = any([daily_list, customers, segments, zones, duration_buckets])
+    if not has_data:
         raise HTTPException(
             status_code=404,
             detail="Không có dữ liệu trong khoảng thời gian đã chọn. Vui lòng chọn khoảng ngày khác hoặc đồng bộ dữ liệu trước.",
         )
 
     summary = _build_summary(daily_list)
-
-    # Với loại revenue: chỉ giữ lại chỉ số đơn hàng & doanh thu trong summary
-    # (total_visitors vẫn hiển thị để tính tỷ lệ chuyển đổi)
 
     return ReportDataDTO(
         report_type=report_type,
@@ -165,4 +252,7 @@ def get_report_data(
         summary=summary,
         daily_stats=daily_list,
         customers=customers,
+        segments=segments,
+        zones=zones,
+        duration_buckets=duration_buckets,
     )

@@ -9,6 +9,9 @@ class ReportType(str, Enum):
     activity = "activity"  # Hoạt động — lượt khách, thời gian lưu trú
     customer = "customer"  # Khách hàng — danh sách, phân nhóm
     revenue  = "revenue"   # Doanh thu — đơn hàng, doanh thu
+    segment  = "segment"   # Phân nhóm AI — pie chart phân bố nhóm
+    zone     = "zone"      # Vùng theo dõi — bar chart lượt ghé, thời gian
+    duration = "duration"  # Thời gian lưu trú — histogram, trend
 
 
 class DailyReportData(BaseModel):
@@ -46,7 +49,33 @@ class ReportDataDTO(BaseModel):
     end_date: date
     summary: ReportSummary
     daily_stats: List[DailyReportData] = []
-    customers: List[CustomerReportData] = []  # Chỉ dùng cho loại customer & summary
+    customers: List[CustomerReportData] = []
+    segments: List["SegmentReportData"] = []
+    zones: List["ZoneReportData"] = []
+    duration_buckets: List["DurationBucketData"] = []
+
+
+class SegmentReportData(BaseModel):
+    segment_name: str
+    member_count: int
+    avg_visits: float
+    avg_duration_seconds: int
+    avg_spent: float
+
+
+class ZoneReportData(BaseModel):
+    zone_name: str
+    zone_type: str
+    color: str
+    total_visits: int
+    avg_duration_seconds: int
+    peak_hour: str | None  # "HH:00-HH:59" giờ đông nhất
+
+
+class DurationBucketData(BaseModel):
+    label: str     # VD: "< 10 phút"
+    count: int
+    pct: float     # %
 
 
 class ReportFilter(BaseModel):
