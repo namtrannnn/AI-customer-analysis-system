@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import CustomerTable, { MOCK_PRESENCE, PRESENCE_IDS } from "@/components/customers/CustomerTable";
+import CustomerTable, { getPresenceIds } from "@/components/customers/CustomerTable";
 import CustomerFilter from "@/components/customers/CustomerFilter";
 import {
   CustomerAddModal,

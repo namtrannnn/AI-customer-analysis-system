@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Users,
@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 
 import type { StreamDetectionPayload } from "@/services/video_stream.service";
+import { getZones } from "@/services/zone.service";
+import type { StoreZone } from "@/types/zone.type";
+import { isPointInPolygon, getFeetPosition } from "@/utils/geometry";
 
 interface LiveDetectionsListProps {
   detections: StreamDetectionPayload[];
@@ -82,6 +85,12 @@ export default function LiveDetectionsList({
 }: LiveDetectionsListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Fetch zones 1 lần để tính zone từ bbox realtime
+  const [zones, setZones] = useState<StoreZone[]>([]);
+  useEffect(() => {
+    getZones().then(setZones).catch(() => {});
+  }, []);
+
   const sortedDetections = useMemo(() => {
     const uniqueDetections = new Map<
       string,
@@ -134,6 +143,12 @@ export default function LiveDetectionsList({
         ...existing,
         ...detection,
 
+        // Giữ lại bbox của existing nếu detection mới không có
+        // (global_identity_result event không gửi bbox)
+        bbox:
+          (detection.bbox?.length === 4 ? detection.bbox : null) ||
+          existing.bbox,
+
         // Không làm mất avatar video hiện tại khi global identity event
         // không gửi lại ảnh.
         current_video_avatar:
@@ -169,6 +184,80 @@ export default function LiveDetectionsList({
       behavior: "smooth",
     });
   }, [sortedDetections.length]);
+
+  // Broadcast số người + danh sách khách đã định danh sang Dashboard và CustomerTable
+  // Dùng interval để broadcast liên tục → các tab mở sau vẫn nhận được ngay
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const channel = new BroadcastChannel("visitor_count");
+
+    function broadcast() {
+      // Khách đã định danh → trang Khách hàng dùng (badge "Đang ở đây")
+      const identified = sortedDetections
+        .filter((d) => d.customer_id != null)
+        .map((d) => ({
+          customer_id:   d.customer_id as number,
+          customer_name: d.customer_name ?? "",
+          zone_name:     null as string | null,
+        }));
+
+      // Tất cả người đang trong video → trang Khách ghé thăm dùng
+      // Tính zone từ bbox bằng isPointInPolygon
+      const all = sortedDetections.map((d) => {
+        let zone_name: string | null = null;
+        let zone_color: string | null = null;
+
+        const bboxArr = Array.isArray(d.bbox) ? d.bbox : [];
+
+        if (zones.length > 0 && bboxArr.length >= 4) {
+          const [x1, y1, x2, y2] = bboxArr;
+          // Dùng center bottom (gót chân) — giống cashier page
+          const feetX = (x1 + x2) / 2;
+          const feetY = y2;
+          const feet = { x: feetX, y: feetY };
+
+          for (const z of zones) {
+            if (Array.isArray(z.polygon) && z.polygon.length >= 3) {
+              if (isPointInPolygon(feet, z.polygon)) {
+                zone_name  = z.zone_name;
+                zone_color = z.color ?? null;
+                break;
+              }
+            }
+          }
+        }
+
+        return {
+          track_id:       d.track_id,
+          anonymous_code: String(d.session_profile_id || d.anonymous_code || "").replace(/^LIVE_[A-Z0-9]+_/, ""),
+          person_type:    (d.customer_id ? "identified" : "anonymous") as "identified" | "anonymous",
+          customer_name:  d.customer_name ?? null,
+          face_image_url: d.identified_customer_avatar || d.stored_profile_avatar || d.current_video_avatar || null,
+          confidence:     d.confidence ?? 0,
+          entered_at:     new Date().toISOString(),
+          zone_name,
+          zone_color,
+          total_visits:   d.total_visits ?? null,
+        };
+      });
+
+      channel.postMessage({
+        count: sortedDetections.length,
+        identified,
+        anonymous: all,  // visit-profiles dùng all (cả định danh lẫn ẩn danh)
+        timestamp: Date.now(),
+      });
+    }
+
+    // Broadcast ngay lập tức + lặp lại mỗi 2s để tab mới mở vẫn nhận được
+    broadcast();
+    const intervalId = setInterval(broadcast, 2000);
+
+    return () => {
+      clearInterval(intervalId);
+      channel.close();
+    };
+  }, [sortedDetections, zones]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xs dark:border-slate-800 dark:bg-slate-900">

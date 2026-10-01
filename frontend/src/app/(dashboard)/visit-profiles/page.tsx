@@ -19,60 +19,12 @@ import {
   type ZoneVisitItem,
 } from "@/services/visit-profiles.service";
 
-// ─── WebSocket URL — đổi thành WS endpoint thật khi có camera ────────────────
-// TODO: thay bằng `wss://intership-api.hqsolutions.vn/api/cameras/live/stream`
-const REALTIME_WS_URL: string | null = null; // null = chưa có camera
-
-// ─── Mock data để demo UI ─────────────────────────────────────────────────────
-// Xóa MOCK_PERSONS khi có camera thật
-const MOCK_PERSONS: RealtimePerson[] = [
-  {
-    track_id: 1,
-    anonymous_code: "ANON_0001",
-    person_type: "identified",
-    customer_name: "Nguyễn Văn An",
-    face_image_url: "https://api.dicebear.com/7.x/personas/svg?seed=An",
-    zone_name: "Khu trưng bày",
-    zone_color: "#6366f1",
-    entered_at: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-    confidence: 0.94,
-  },
-  {
-    track_id: 2,
-    anonymous_code: "ANON_0002",
-    person_type: "anonymous",
-    customer_name: null,
-    face_image_url: "https://api.dicebear.com/7.x/personas/svg?seed=B2",
-    zone_name: "Quầy thanh toán",
-    zone_color: "#22c55e",
-    entered_at: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
-    confidence: 0.81,
-  },
-  {
-    track_id: 3,
-    anonymous_code: "ANON_0003",
-    person_type: "identified",
-    customer_name: "Trần Thị Bích",
-    face_image_url: "https://api.dicebear.com/7.x/personas/svg?seed=Bich",
-    zone_name: "Khu khuyến mãi",
-    zone_color: "#f59e0b",
-    entered_at: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-    confidence: 0.97,
-  },
-  {
-    track_id: 4,
-    anonymous_code: "ANON_0004",
-    person_type: "anonymous",
-    customer_name: null,
-    face_image_url: "https://api.dicebear.com/7.x/personas/svg?seed=D4",
-    zone_name: "Lối vào",
-    zone_color: "#14b8a6",
-    entered_at: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
-    confidence: 0.76,
-  },
-];
+// ─── Lấy anonymous persons từ BroadcastChannel "visitor_count" ──────────────
+// Không cần WS riêng — LiveDetectionsList đã broadcast anonymous[] rồi
+const REALTIME_WS_URL = null; // giữ để không break type
 
 type TabKey = "realtime" | "all";
+type PersonTypeFilter = "all" | "anonymous" | "identified";
 
 // ─── Realtime person đang có mặt ─────────────────────────────────────────────
 interface RealtimePerson {
@@ -85,6 +37,7 @@ interface RealtimePerson {
   zone_color: string | null;
   entered_at: string;
   confidence: number;
+  total_visits: number | null;
 }
 
 // ─── Zone color dot ──────────────────────────────────────────────────────────
@@ -306,33 +259,76 @@ function ProfileDetail({
   );
 }
 
-// ─── Realtime tab ─────────────────────────────────────────────────────────────
-function RealtimeTab() {
-  const [connected, setConnected] = useState(false);
-  const [persons, setPersons] = useState<RealtimePerson[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
-  const isMock = !REALTIME_WS_URL;
+// ─── ElapsedTime — tính thời gian ở lại realtime ─────────────────────────────
+function ElapsedTime({ enteredAt }: { enteredAt: string }) {
+  const [elapsed, setElapsed] = useState("");
 
   useEffect(() => {
-    if (isMock) {
-      // Dùng mock data — simulate "connected" sau 800ms
-      const t = setTimeout(() => {
-        setConnected(true);
-        setPersons(MOCK_PERSONS);
-      }, 800);
-      return () => clearTimeout(t);
+    function calc() {
+      const diff = Math.max(0, Math.floor((Date.now() - new Date(enteredAt).getTime()) / 1000));
+      if (diff < 60) {
+        setElapsed(`${diff}s`);
+      } else if (diff < 3600) {
+        const m = Math.floor(diff / 60);
+        const s = diff % 60;
+        setElapsed(`${m}p${s > 0 ? ` ${s}s` : ""}`);
+      } else {
+        const h = Math.floor(diff / 3600);
+        const m = Math.floor((diff % 3600) / 60);
+        setElapsed(`${h}h${m > 0 ? ` ${m}p` : ""}`);
+      }
     }
+    calc();
+    const id = setInterval(calc, 1000);
+    return () => clearInterval(id);
+  }, [enteredAt]);
 
-    // Khi có camera thật, uncomment:
-    // wsRef.current = new WebSocket(REALTIME_WS_URL!);
-    // wsRef.current.onopen = () => setConnected(true);
-    // wsRef.current.onclose = () => setConnected(false);
-    // wsRef.current.onmessage = (e) => {
-    //   const data = JSON.parse(e.data);
-    //   if (data.type === "presence_update") setPersons(data.persons);
-    // };
-    // return () => wsRef.current?.close();
-  }, [isMock]);
+  return (
+    <span className="font-semibold text-amber-600 dark:text-amber-400">
+      {elapsed}
+    </span>
+  );
+}
+
+// ─── Realtime tab ─────────────────────────────────────────────────────────────
+function RealtimeTab({ personTypeFilter }: { personTypeFilter: PersonTypeFilter }) {
+  const [connected, setConnected] = useState(false);
+  const [persons, setPersons] = useState<RealtimePerson[]>([]);
+
+  useEffect(() => {
+    const channel = new BroadcastChannel("visitor_count");
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const resetTimeout = () => {
+      clearTimeout(timeoutId);
+      // Broadcast mỗi 2s → timeout 6s là đủ an toàn
+      timeoutId = setTimeout(() => setConnected(false), 6000);
+    };
+
+    channel.onmessage = (e) => {
+      resetTimeout();
+      setConnected(true);
+      const { anonymous } = e.data as {
+        count: number;
+        anonymous?: RealtimePerson[];
+        timestamp: number;
+      };
+      if (anonymous !== undefined) setPersons(anonymous);
+    };
+
+    // Chờ broadcast đầu tiên tối đa 6s
+    resetTimeout();
+
+    return () => {
+      channel.close();
+      clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // Filter client-side — không gọi API, không WS mới
+  const filtered = personTypeFilter === "all"
+    ? persons
+    : persons.filter((p) => p.person_type === personTypeFilter);
 
   if (!connected) {
     return (
@@ -352,59 +348,94 @@ function RealtimeTab() {
         style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
       >
         <div className="flex items-center gap-2">
-          <span className={`h-2.5 w-2.5 rounded-full ${connected ? "bg-emerald-500 animate-pulse" : "bg-red-400"}`} />
+          <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-            {connected ? "Đang kết nối realtime" : "Mất kết nối"}
+            Đang kết nối realtime
           </span>
-          {isMock && (
-            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-              Mock data
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-bold rounded-full bg-sky-50 px-2.5 py-0.5 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400">
+            {persons.length} người trong cửa hàng
+          </span>
+          {personTypeFilter !== "all" && (
+            <span className="text-xs font-bold rounded-full bg-amber-50 px-2.5 py-0.5 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+              Hiển thị {filtered.length}
             </span>
           )}
         </div>
-        <span className="text-xs font-bold rounded-full bg-sky-50 px-2.5 py-0.5 text-sky-600 dark:bg-sky-500/10 dark:text-sky-400">
-          {persons.length} người trong cửa hàng
-        </span>
       </div>
 
       {/* Persons grid */}
-      {persons.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-3 rounded-2xl py-16"
           style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
         >
           <Activity className="h-8 w-8 text-slate-300" />
           <p className="text-sm" style={{ color: "var(--text-muted)" }}>
-            {connected ? "Không có ai trong cửa hàng lúc này" : "Đang chờ kết nối..."}
+            {persons.length === 0
+              ? "Không có ai trong cửa hàng lúc này"
+              : `Không có khách ${personTypeFilter === "anonymous" ? "ẩn danh" : "định danh"} nào`}
           </p>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {persons.map((p) => (
+          {filtered.map((p) => (
             <div key={p.track_id} className="rounded-2xl p-4"
               style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}
             >
               <div className="flex items-center gap-3 mb-3">
-                <img
-                  src={p.face_image_url ?? "https://placehold.co/48x48/e2e8f0/64748b?text=Face"}
-                  alt="face"
-                  className="h-12 w-12 rounded-xl object-cover ring-2 ring-slate-200 dark:ring-slate-700"
-                />
+                <div className="relative h-12 w-12 shrink-0">
+                  <img
+                    src={p.face_image_url ?? "https://placehold.co/48x48/e2e8f0/64748b?text=Face"}
+                    alt="face"
+                    className="h-12 w-12 rounded-xl object-cover ring-2 ring-slate-200 dark:ring-slate-700"
+                  />
+                  {/* Badge định danh / ẩn danh */}
+                  <span className={`absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white dark:border-slate-800 flex items-center justify-center ${
+                    p.person_type === "identified" ? "bg-emerald-500" : "bg-slate-400"
+                  }`}>
+                    {p.person_type === "identified"
+                      ? <CheckCircle2 className="h-2.5 w-2.5 text-white" />
+                      : <User className="h-2.5 w-2.5 text-white" />
+                    }
+                  </span>
+                </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-bold" style={{ color: "var(--text-primary)" }}>
                     {p.customer_name ?? p.anonymous_code}
                   </p>
                   <p className="text-[11px] font-mono" style={{ color: "var(--text-muted)" }}>{p.anonymous_code}</p>
+                  <span className={`mt-0.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-bold ${
+                    p.person_type === "identified"
+                      ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                  }`}>
+                    {p.person_type === "identified" ? "Định danh" : "Ẩn danh"}
+                  </span>
                 </div>
               </div>
-              {p.zone_name && (
-                <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--text-secondary)" }}>
-                  <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
-                  <ZoneDot color={p.zone_color} name={p.zone_name} />
+              {/* Zone */}
+              <div className="flex items-center gap-1.5 text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                <MapPin className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--text-muted)" }} />
+                {p.zone_name
+                  ? <ZoneDot color={p.zone_color} name={p.zone_name} />
+                  : <span style={{ color: "var(--text-muted)" }}>Không xác định</span>
+                }
+              </div>
+              {/* Thời gian vào + ở lại */}
+              <div className="mt-1 flex items-center justify-between text-[11px]" style={{ color: "var(--text-muted)" }}>
+                <span>Vào {formatDateTime(p.entered_at)}</span>
+                <ElapsedTime enteredAt={p.entered_at} />
+              </div>
+              {/* Số lần ghé */}
+              {p.total_visits != null && p.total_visits > 0 && (
+                <div className="mt-1 text-[11px] font-semibold" style={{ color: "var(--text-muted)" }}>
+                  {p.total_visits === 1
+                    ? <span className="text-sky-600 dark:text-sky-400">Lần đầu ghé</span>
+                    : <span>Đã ghé <span className="font-bold" style={{ color: "var(--text-primary)" }}>{p.total_visits}</span> lần</span>
+                  }
                 </div>
               )}
-              <p className="mt-1 text-[11px]" style={{ color: "var(--text-muted)" }}>
-                Vào lúc {formatDateTime(p.entered_at)}
-              </p>
             </div>
           ))}
         </div>
@@ -416,6 +447,7 @@ function RealtimeTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function VisitorProfilesPage() {
   const [tab, setTab] = useState<TabKey>("all");
+  const [personTypeFilter, setPersonTypeFilter] = useState<PersonTypeFilter>("all");
   const [profiles, setProfiles] = useState<VisitorProfile[]>([]);
   const [stats, setStats] = useState<{ new_count: number; returning_count: number; total_count: number } | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<VisitorProfile | null>(null);
@@ -538,8 +570,34 @@ export default function VisitorProfilesPage() {
         ))}
       </div>
 
+      {/* Person type filter pills — dùng chung cho cả 2 tab, filter client-side */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-semibold shrink-0" style={{ color: "var(--text-muted)" }}>Lọc:</span>
+        {([
+          { value: "all",        label: "Tất cả" },
+          { value: "anonymous",  label: "Ẩn danh" },
+          { value: "identified", label: "Định danh" },
+        ] as { value: PersonTypeFilter; label: string }[]).map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => setPersonTypeFilter(opt.value)}
+            className={`rounded-full px-3 py-1 text-xs font-bold transition-all ${
+              personTypeFilter === opt.value
+                ? opt.value === "identified"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : opt.value === "anonymous"
+                    ? "bg-slate-500 text-white shadow-sm"
+                    : "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                : "bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
       {/* Tab content */}
-      {tab === "realtime" && <RealtimeTab />}
+      {tab === "realtime" && <RealtimeTab personTypeFilter={personTypeFilter} />}
 
       {tab === "all" && (
         <>
@@ -592,122 +650,151 @@ export default function VisitorProfilesPage() {
           </div>
 
           {/* Table */}
-          <div className="overflow-hidden rounded-2xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
-            {loading ? (
-              <div className="flex items-center justify-center gap-2 py-16" style={{ color: "var(--text-muted)" }}>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm">Đang tải...</span>
-              </div>
-            ) : profiles.length === 0 ? (
-              <p className="py-12 text-center text-sm" style={{ color: "var(--text-muted)" }}>Không tìm thấy hồ sơ nào</p>
-            ) : (
-              <>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr
-                        className="text-left text-[11px] font-bold uppercase tracking-wide"
-                        style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)", background: "var(--bg-surface-2)" }}
-                      >
-                        <th className="px-5 py-3">Khuôn mặt</th>
-                        <th className="px-4 py-3">Mã ẩn danh</th>
-                        <th className="px-4 py-3">Phân loại</th>
-                        <th className="px-4 py-3 text-center">Ghé thăm</th>
-                        <th className="px-4 py-3">Khách hàng</th>
-                        <th className="px-4 py-3">Lần cuối</th>
-                        <th className="px-5 py-3 text-center">Chi tiết</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {profiles.map((p) => {
-                        const isNew = p.total_visits === 1;
-                        return (
-                          <tr
-                            key={p.id}
-                            className="transition hover:bg-slate-50/50 dark:hover:bg-white/[0.02]"
-                            style={{ borderBottom: "1px solid var(--border)" }}
-                          >
-                            <td className="px-5 py-3">
-                              <img
-                                src={p.face_image_url}
-                                alt="face"
-                                className="h-10 w-10 rounded-xl object-cover ring-2 ring-slate-100 dark:ring-slate-700"
-                              />
-                            </td>
-                            <td className="px-4 py-3 font-mono text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
-                              {p.anonymous_code}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                                isNew
-                                  ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
-                                  : "bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400"
-                              }`}>
-                                {isNew ? "Khách mới" : "Khách cũ"}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center font-black" style={{ color: "var(--text-primary)" }}>
-                              {p.total_visits}
-                            </td>
-                            <td className="px-4 py-3">
-                              {p.customer_name ? (
-                                <span className="flex items-center gap-1.5 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
-                                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                  {p.customer_name}
-                                </span>
-                              ) : (
-                                <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Chưa liên kết</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
-                              {formatDateTime(p.last_seen_at)}
-                            </td>
-                            <td className="px-5 py-3 text-center">
-                              <button
-                                onClick={() => handleViewProfile(p)}
-                                disabled={detailLoadingId === p.id}
-                                className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-500/10 disabled:opacity-50"
-                                style={{ color: "var(--text-secondary)" }}
-                              >
-                                {detailLoadingId === p.id
-                                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                  : <Eye className="h-3.5 w-3.5" />
-                                }
-                                Xem
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+          {(() => {
+            // Filter client-side theo person_type — không gọi API lại
+            const filteredProfiles = personTypeFilter === "all"
+              ? profiles
+              : profiles.filter((p) => p.person_type === personTypeFilter);
 
-                {/* Pagination */}
-                <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
-                  <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>Trang {page}</span>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={page <= 1}
-                      className="rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-30"
-                      style={{ background: "var(--bg-surface-2)", color: "var(--text-secondary)" }}
-                    >
-                      <ChevronLeft className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setPage((p) => p + 1)}
-                      disabled={profiles.length < limit}
-                      className="rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-30"
-                      style={{ background: "var(--bg-surface-2)", color: "var(--text-secondary)" }}
-                    >
-                      <ChevronRight className="h-3.5 w-3.5" />
-                    </button>
+            return (
+              <div className="overflow-hidden rounded-2xl" style={{ background: "var(--bg-surface)", border: "1px solid var(--border)" }}>
+                {loading ? (
+                  <div className="flex items-center justify-center gap-2 py-16" style={{ color: "var(--text-muted)" }}>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <span className="text-sm">Đang tải...</span>
                   </div>
-                </div>
-              </>
-            )}
-          </div>
+                ) : filteredProfiles.length === 0 ? (
+                  <p className="py-12 text-center text-sm" style={{ color: "var(--text-muted)" }}>
+                    {profiles.length === 0
+                      ? "Không tìm thấy hồ sơ nào"
+                      : `Không có khách ${personTypeFilter === "anonymous" ? "ẩn danh" : "định danh"} nào trong trang này`}
+                  </p>
+                ) : (
+                  <>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr
+                            className="text-left text-[11px] font-bold uppercase tracking-wide"
+                            style={{ color: "var(--text-muted)", borderBottom: "1px solid var(--border)", background: "var(--bg-surface-2)" }}
+                          >
+                            <th className="px-5 py-3">Khuôn mặt</th>
+                            <th className="px-4 py-3">Mã ẩn danh</th>
+                            <th className="px-4 py-3">Loại</th>
+                            <th className="px-4 py-3 text-center">Ghé thăm</th>
+                            <th className="px-4 py-3">Khách hàng</th>
+                            <th className="px-4 py-3">Lần cuối</th>
+                            <th className="px-5 py-3 text-center">Chi tiết</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredProfiles.map((p) => {
+                            const isIdentified = p.person_type === "identified";
+                            return (
+                              <tr
+                                key={p.id}
+                                className="transition hover:bg-slate-50/50 dark:hover:bg-white/[0.02]"
+                                style={{ borderBottom: "1px solid var(--border)" }}
+                              >
+                                <td className="px-5 py-3">
+                                  <div className="relative h-10 w-10">
+                                    <img
+                                      src={p.face_image_url}
+                                      alt="face"
+                                      className="h-10 w-10 rounded-xl object-cover ring-2 ring-slate-100 dark:ring-slate-700"
+                                    />
+                                    {/* dot định danh / ẩn danh */}
+                                    <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900 ${
+                                      isIdentified ? "bg-emerald-500" : "bg-slate-400"
+                                    }`} />
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 font-mono text-xs font-semibold" style={{ color: "var(--text-secondary)" }}>
+                                  {p.anonymous_code}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
+                                    isIdentified
+                                      ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                      : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                                  }`}>
+                                    {isIdentified ? "Định danh" : "Ẩn danh"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center font-black" style={{ color: "var(--text-primary)" }}>
+                                  {p.total_visits}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {p.customer_name ? (
+                                    <Link
+                                      href={`/customers`}
+                                      className="flex items-center gap-1.5 text-sm font-semibold text-indigo-600 hover:underline dark:text-indigo-400"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                      {p.customer_name}
+                                    </Link>
+                                  ) : (
+                                    <span className="text-xs italic" style={{ color: "var(--text-muted)" }}>Chưa liên kết</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-xs" style={{ color: "var(--text-muted)" }}>
+                                  {formatDateTime(p.last_seen_at)}
+                                </td>
+                                <td className="px-5 py-3 text-center">
+                                  <button
+                                    onClick={() => handleViewProfile(p)}
+                                    disabled={detailLoadingId === p.id}
+                                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-500/10 disabled:opacity-50"
+                                    style={{ color: "var(--text-secondary)" }}
+                                  >
+                                    {detailLoadingId === p.id
+                                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                      : <Eye className="h-3.5 w-3.5" />
+                                    }
+                                    Xem
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: "1px solid var(--border)" }}>
+                      <span className="text-xs font-semibold" style={{ color: "var(--text-muted)" }}>
+                        Trang {page}
+                        {personTypeFilter !== "all" && (
+                          <span className="ml-2" style={{ color: "var(--text-muted)" }}>
+                            · {filteredProfiles.length}/{profiles.length} hồ sơ
+                          </span>
+                        )}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setPage((p) => Math.max(1, p - 1))}
+                          disabled={page <= 1}
+                          className="rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-30"
+                          style={{ background: "var(--bg-surface-2)", color: "var(--text-secondary)" }}
+                        >
+                          <ChevronLeft className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setPage((p) => p + 1)}
+                          disabled={profiles.length < limit}
+                          className="rounded-lg px-3 py-1.5 text-xs font-bold transition disabled:opacity-30"
+                          style={{ background: "var(--bg-surface-2)", color: "var(--text-secondary)" }}
+                        >
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })()}
         </>
       )}
 
